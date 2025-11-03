@@ -562,7 +562,7 @@ export const useStore = create((set, get) => ({
       } catch (error) {
         console.error('Error generating image:', error);
         
-        // Update with error message
+        const friendlyError = error.message || 'Image generation failed. Please verify your API key and selected model.';
         set(state => ({
           messages: {
             ...state.messages,
@@ -570,7 +570,7 @@ export const useStore = create((set, get) => ({
               msg.id === aiMessage.id
                 ? { 
                     ...msg, 
-                    content: "Sorry, image generation is currently unavailable. This app now uses only OpenRouter APIs and does not yet support image generation via OpenRouter.", 
+                    content: friendlyError, 
                     isTyping: false,
                     isGeneratingImage: false
                   }
@@ -965,9 +965,80 @@ function generateMockResponse(message, model) {
 
 // Image Generation Function
 async function generateImage(prompt, modelType, apiKey, useOpenAI = false) {
+  const desiredModel = !modelType || modelType === 'default' ? 'dall-e-3' : modelType;
+
   try {
-    // Use only OpenRouter; images endpoint not implemented in this app
-    throw new Error('Image generation via OpenRouter is not implemented in this app');
+    if (useOpenAI) {
+      const response = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: desiredModel,
+          prompt,
+          n: 1,
+          size: '1024x1024',
+          quality: desiredModel === 'dall-e-3' ? 'high' : 'standard',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `OpenAI image generation failed (HTTP ${response.status})`);
+      }
+
+      const data = await response.json();
+      const imageData = data.data?.[0];
+      if (!imageData) {
+        throw new Error('OpenAI returned no image data');
+      }
+
+      if (imageData.url) return imageData.url;
+      if (imageData.b64_json) return `data:image/png;base64,${imageData.b64_json}`;
+
+      throw new Error('OpenAI returned an unsupported image format');
+    }
+
+    // OpenRouter image generation
+    const openRouterModelMap = {
+      'dall-e-3': 'openai/dall-e-3',
+      'nano-banana': 'stabilityai/stable-diffusion-xl-base-1.0',
+    };
+    const openRouterModel = openRouterModelMap[desiredModel] || desiredModel || 'openai/dall-e-3';
+
+    const response = await fetch('https://openrouter.ai/api/v1/images', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'AI Messenger',
+      },
+      body: JSON.stringify({
+        model: openRouterModel,
+        prompt,
+        size: '1024x1024',
+        n: 1,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `OpenRouter image generation failed (HTTP ${response.status})`);
+    }
+
+    const data = await response.json();
+    const imageData = data.data?.[0];
+    if (!imageData) {
+      throw new Error('OpenRouter returned no image data');
+    }
+
+    if (imageData.url) return imageData.url;
+    if (imageData.b64_json) return `data:image/png;base64,${imageData.b64_json}`;
+
+    throw new Error('OpenRouter returned an unsupported image format');
   } catch (error) {
     console.error('Image generation error:', error);
     throw error;
