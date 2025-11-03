@@ -12,6 +12,7 @@ const providerTabs = [
 
 function AIModelsModal({ onClose }) {
   const [activeTab, setActiveTab] = useState('openrouter');
+  const [modelSearch, setModelSearch] = useState('');
   const { 
     aiModels, 
     createConversation, 
@@ -39,7 +40,15 @@ function AIModelsModal({ onClose }) {
 
   // Filter models by provider
   const getModelsByProvider = (provider) => {
-    return aiModels.filter(m => m.provider === provider);
+    const base = aiModels.filter(m => m.provider === provider);
+    const q = modelSearch.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter(m =>
+      (m.name && m.name.toLowerCase().includes(q)) ||
+      (m.personality && m.personality.toLowerCase().includes(q)) ||
+      (m.apiModel && m.apiModel.toLowerCase().includes(q)) ||
+      (m.status && m.status.toLowerCase().includes(q))
+    );
   };
 
   const handleSelectModel = (modelId) => {
@@ -106,6 +115,16 @@ function AIModelsModal({ onClose }) {
 
           {/* Content */}
           <div className="p-6 overflow-y-auto max-h-[calc(80vh-200px)] overscroll-contain">
+            {/* Model Search */}
+            <div className="mb-4">
+              <input
+                type="text"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder="Search models by name, provider ID, or description..."
+                className="w-full px-4 py-2 bg-surface-light rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
             {/* Loading State */}
             {isLoadingModels && activeTab === 'openrouter' && (
               <div className="flex flex-col items-center justify-center py-12">

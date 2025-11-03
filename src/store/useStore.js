@@ -124,10 +124,17 @@ export const useStore = create((set, get) => ({
         };
       });
       
-      // Merge with existing static models (n8n and LM Studio)
-      const staticModels = get().aiModels.filter(m => m.provider !== 'openrouter');
+      // Merge with existing models without removing any, preserving existing IDs
+      // to keep sidebar conversations intact. Avoid duplicates by apiModel.
+      const existing = get().aiModels || [];
+      const existingByApiModel = new Map(
+        existing
+          .filter(m => !!m.apiModel)
+          .map(m => [m.apiModel, m])
+      );
+      const appended = openRouterModels.filter(m => !existingByApiModel.has(m.apiModel));
       set({ 
-        aiModels: [...staticModels, ...openRouterModels],
+        aiModels: [...existing, ...appended],
         openRouterModels,
         isLoadingModels: false 
       });
