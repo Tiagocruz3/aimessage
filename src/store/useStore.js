@@ -846,8 +846,19 @@ async function callOpenRouterWithContext(message, context, model, apiKey) {
       ],
     }),
   });
-  const data = await response.json();
-  return data.choices[0].message.content;
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errMessage = data.error?.message || data.message || `OpenRouter request failed (HTTP ${response.status})`;
+    throw new Error(errMessage);
+  }
+
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('OpenRouter returned an empty response for this query. Try a different model or check your API usage limits.');
+  }
+
+  return content;
 }
 
 async function fetchSearxResults(query, searchUrl) {
