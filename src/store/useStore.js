@@ -2,13 +2,17 @@ import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { aiModels } from '../data/aiModels';
 
-export const useStore = create((set, get) => ({
-  // State
-  aiModels: [],
-  conversations: [],
-  activeConversationId: null,
-  messages: {},
-  apiSettings: {
+// Load API settings from localStorage
+const loadApiSettings = () => {
+  try {
+    const saved = localStorage.getItem('ai-messenger-api-settings');
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (error) {
+    console.error('Error loading API settings:', error);
+  }
+  return {
     provider: 'openrouter', // openrouter, n8n, lmstudio
     openrouterApiKey: '',
     openaiApiKey: '', // Separate OpenAI API key for image generation
@@ -17,7 +21,16 @@ export const useStore = create((set, get) => ({
     searchUrl: 'https://search.brainstormnodes.org/',
     imageGenerationModel: 'dall-e-3', // dall-e-3, nano-banana
     ocrModel: 'gpt-4o', // OpenAI OCR/Vision models
-  },
+  };
+};
+
+export const useStore = create((set, get) => ({
+  // State
+  aiModels: [],
+  conversations: [],
+  activeConversationId: null,
+  messages: {},
+  apiSettings: loadApiSettings(),
   openRouterModels: [],
   isLoadingModels: false,
   modelsError: null,
@@ -379,19 +392,28 @@ export const useStore = create((set, get) => ({
     
     try {
       let response = '';
-      
-      if (apiSettings.provider === 'openrouter' && apiSettings.openrouterApiKey) {
+
+      // Check if provider is configured properly
+      if (apiSettings.provider === 'openrouter') {
+        if (!apiSettings.openrouterApiKey) {
+          throw new Error('No OpenRouter API key configured. Please add your OpenRouter API key in Settings.');
+        }
         // Call OpenRouter API
         response = await callOpenRouter(content, model, apiSettings.openrouterApiKey);
-      } else if (apiSettings.provider === 'n8n' && apiSettings.n8nWebhookUrl) {
+      } else if (apiSettings.provider === 'n8n') {
+        if (!apiSettings.n8nWebhookUrl) {
+          throw new Error('No n8n webhook URL configured. Please add your n8n webhook URL in Settings.');
+        }
         // Call n8n webhook
         response = await callN8nWebhook(content, model, apiSettings.n8nWebhookUrl);
       } else if (apiSettings.provider === 'lmstudio') {
+        if (!apiSettings.lmstudioUrl) {
+          throw new Error('No LM Studio URL configured. Please configure your LM Studio URL in Settings.');
+        }
         // Call LM Studio
         response = await callLMStudio(content, model, apiSettings.lmstudioUrl);
       } else {
-        // Fallback to mock response
-        response = generateMockResponse(content, model);
+        throw new Error('No API provider configured. Please configure an API provider in Settings.');
       }
       
       // Update AI message with response
@@ -428,9 +450,14 @@ export const useStore = create((set, get) => ({
   },
   
   updateApiSettings: (settings) => {
-    set(state => ({
-      apiSettings: { ...state.apiSettings, ...settings },
-    }));
+    const newSettings = { ...get().apiSettings, ...settings };
+    set({ apiSettings: newSettings });
+    // Persist to localStorage
+    try {
+      localStorage.setItem('ai-messenger-api-settings', JSON.stringify(newSettings));
+    } catch (error) {
+      console.error('Error saving API settings:', error);
+    }
   },
   
   updateAIModel: (modelId, updates) => {
