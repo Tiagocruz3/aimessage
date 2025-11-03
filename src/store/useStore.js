@@ -245,8 +245,19 @@ export const useStore = create((set, get) => ({
           apiSettings.openrouterApiKey
         );
 
-        const sourcesMd = top.map((r, i) => `- [${r.title || r.url}](${r.url})`).join('\n') || '_No sources returned_';
-        const finalContent = `${answer}\n\nSources:\n${sourcesMd}`;
+        const summary = answer?.trim() || 'No summary available.';
+
+        const formattedResults = top
+          .map((r, i) => {
+            const title = r.title || r.url || `Result ${i + 1}`;
+            const url = r.url || '#';
+            const snippet = (r.content || r.description || '').trim();
+            const truncatedSnippet = snippet ? snippet.slice(0, 280) + (snippet.length > 280 ? '…' : '') : '_No preview available_';
+            return `**${i + 1}. [${title}](${url})**\n${truncatedSnippet}`;
+          })
+          .join('\n\n');
+
+        const finalContent = `**Summary**\n${summary}\n\n**Results**\n${formattedResults}`;
 
         set(state => ({
           messages: {
