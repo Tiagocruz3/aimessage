@@ -178,6 +178,24 @@ export const useStore = create((set, get) => ({
     }));
   },
   
+  removeConversation: (conversationId) => {
+    set(state => {
+      const remainingConversations = state.conversations.filter(conv => conv.id !== conversationId);
+      const { [conversationId]: _removedMessages, ...remainingMessages } = state.messages;
+
+      let newActiveId = state.activeConversationId;
+      if (state.activeConversationId === conversationId) {
+        newActiveId = remainingConversations.length > 0 ? remainingConversations[0].id : null;
+      }
+
+      return {
+        conversations: remainingConversations,
+        messages: remainingMessages,
+        activeConversationId: newActiveId,
+      };
+    });
+  },
+
   sendMessage: async (content) => {
     const { activeConversationId, conversations, messages, apiSettings } = get();
     if (!activeConversationId || !content.trim()) return;

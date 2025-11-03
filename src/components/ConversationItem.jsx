@@ -2,8 +2,9 @@ import React from 'react';
 import { useStore } from '../store/useStore';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
+import { Trash2 } from 'lucide-react';
 
-function ConversationItem({ conversation, isActive }) {
+function ConversationItem({ conversation, isActive, onRemove }) {
   const { aiModels, setActiveConversation } = useStore();
   const model = aiModels.find(m => m.id === conversation.modelId);
 
@@ -14,7 +15,7 @@ function ConversationItem({ conversation, isActive }) {
       whileHover={{ backgroundColor: 'rgba(158, 127, 255, 0.1)' }}
       whileTap={{ scale: 0.98 }}
       onClick={() => setActiveConversation(conversation.id)}
-      className={`p-4 cursor-pointer transition-all ${
+      className={`group p-4 cursor-pointer transition-all ${
         isActive ? 'bg-primary/20 border-l-4 border-primary' : ''
       }`}
     >
@@ -46,12 +47,27 @@ function ConversationItem({ conversation, isActive }) {
             {conversation.lastMessage}
           </p>
         </div>
-        
-        {conversation.unread > 0 && (
-          <div className="flex items-center justify-center w-6 h-6 bg-primary rounded-full text-xs font-bold animate-bounce-in">
-            {conversation.unread}
-          </div>
-        )}
+
+        <div className="flex flex-col items-end gap-2">
+          {conversation.unread > 0 && (
+            <div className="flex items-center justify-center w-6 h-6 bg-primary rounded-full text-xs font-bold animate-bounce-in">
+              {conversation.unread}
+            </div>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemove();
+              }}
+              className="p-1 rounded-full text-text-secondary hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100"
+              title="Remove conversation"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </motion.div>
   );

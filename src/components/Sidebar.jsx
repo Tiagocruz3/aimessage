@@ -8,13 +8,19 @@ import AIModelsModal from './AIModelsModal';
 function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAIModelsModal, setShowAIModelsModal] = useState(false);
-  const { conversations, aiModels, activeConversationId } = useStore();
+  const { conversations, aiModels, activeConversationId, removeConversation } = useStore();
 
   const filteredConversations = conversations.filter(conv => {
     const model = aiModels.find(m => m.id === conv.modelId);
     return model?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
            conv.lastMessage.toLowerCase().includes(searchQuery.toLowerCase());
   });
+
+  const handleRemoveConversation = (conversationId) => {
+    if (window.confirm('Remove this assistant conversation? This will clear all its messages.')) {
+      removeConversation(conversationId);
+    }
+  };
 
   return (
     <>
@@ -60,6 +66,7 @@ function Sidebar() {
                     key={conversation.id}
                     conversation={conversation}
                     isActive={activeConversationId === conversation.id}
+                    onRemove={() => handleRemoveConversation(conversation.id)}
                   />
                 ))}
               </div>
