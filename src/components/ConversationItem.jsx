@@ -24,6 +24,10 @@ function ConversationItem({ conversation, isActive }) {
             src={model.avatar}
             alt={model.name}
             className="w-12 h-12 rounded-full object-cover"
+            onError={(e) => {
+              const seed = encodeURIComponent(model.apiModel || model.name || 'aimessenger');
+              e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
+            }}
           />
           {model.isOnline && (
             <div className="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-surface animate-pulse-glow" />

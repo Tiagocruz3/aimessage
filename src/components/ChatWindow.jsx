@@ -173,6 +173,10 @@ function ChatWindow() {
                 src={activeModel.avatar}
                 alt={activeModel.name}
                 className="w-10 h-10 rounded-full object-cover"
+                onError={(e) => {
+                  const seed = encodeURIComponent(activeModel.apiModel || activeModel.name || 'aimessenger');
+                  e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
+                }}
               />
               {activeModel.isOnline && (
                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-surface" />
@@ -337,6 +341,10 @@ function ChatWindow() {
                               src={model.avatar}
                               alt={model.name}
                               className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) => {
+                                const seed = encodeURIComponent(model.apiModel || model.name || 'aimessenger');
+                                e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
+                              }}
                             />
                             <div className="flex-1 text-left">
                               <p className="text-sm font-medium">{model.name}</p>

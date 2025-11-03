@@ -172,7 +172,8 @@ function AIModelsModal({ onClose }) {
                             alt={model.name}
                             className="w-16 h-16 rounded-xl object-cover group-hover:scale-110 transition-transform"
                             onError={(e) => {
-                              e.target.src = 'https://images.pexels.com/photos/8566472/pexels-photo-8566472.jpeg?w=400';
+                              const seed = encodeURIComponent(model.apiModel || model.name || 'aimessenger');
+                              e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
                             }}
                           />
                           <div className={`absolute -bottom-2 -right-2 p-1.5 rounded-full ${

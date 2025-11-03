@@ -20,6 +20,10 @@ function AIModelCard({ model }) {
             src={model.avatar}
             alt={model.name}
             className="w-14 h-14 rounded-full object-cover"
+            onError={(e) => {
+              const seed = encodeURIComponent(model.apiModel || model.name || 'aimessenger');
+              e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
+            }}
           />
           <div className={`absolute -bottom-1 -right-1 p-1 rounded-full ${
             model.isOnline ? 'bg-success' : 'bg-surface'

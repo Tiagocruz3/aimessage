@@ -87,10 +87,6 @@ export const useStore = create((set, get) => ({
       
       // Transform ALL OpenRouter models without filtering
       const openRouterModels = data.data.map(model => {
-        // Generate a consistent random avatar based on model ID
-        const avatarSeed = model.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const avatarId = 8000000 + (avatarSeed % 1000000);
-        
         // Extract only the values we need, avoiding nested objects
         const contextLength = typeof model.context_length === 'number' ? model.context_length : null;
         const topProvider = typeof model.top_provider === 'string' ? model.top_provider : null;
@@ -106,7 +102,7 @@ export const useStore = create((set, get) => ({
         return {
           id: uuidv4(),
           name: model.name || model.id.split('/').pop().replace(/-/g, ' '),
-          avatar: `https://images.pexels.com/photos/${avatarId}/pexels-photo-${avatarId}.jpeg?w=400`,
+          avatar: `https://robohash.org/${encodeURIComponent(model.id)}.png?size=200x200&set=set1`,
           personality: model.description || `AI model: ${model.id}`,
           status: contextLength ? `Context: ${contextLength.toLocaleString()} tokens` : 'Ready to chat',
           apiModel: model.id,
