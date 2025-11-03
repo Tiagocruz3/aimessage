@@ -210,7 +210,10 @@ export const useStore = create((set, get) => ({
       isShortMessage &&
       !isQuestion;
     
-    const isImageRequest = hasImageKeywords || isLikelyImageRequest || hasImageCommand || isVeryShortSubject;
+    // Only treat as image request when user explicitly asks for an image
+    // via command, clear image-related keywords, or likely phrasing.
+    // Do NOT trigger on very short generic messages like "hi".
+    const isImageRequest = hasImageCommand || hasImageKeywords || isLikelyImageRequest;
     
     const userMessage = {
       id: uuidv4(),
