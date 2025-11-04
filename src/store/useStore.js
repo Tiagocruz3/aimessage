@@ -154,6 +154,7 @@ export const useStore = create((set, get) => ({
       lastMessage: model.lastMessage || 'Click to start chatting',
       timestamp: new Date(Date.now() - Math.random() * 3600000).toISOString(),
       unread: Math.random() > 0.5 ? Math.floor(Math.random() * 5) : 0,
+      extraModelIds: [],
     }));
     
     set({ conversations });
@@ -269,6 +270,7 @@ export const useStore = create((set, get) => ({
       lastMessage: 'New conversation',
       timestamp: new Date().toISOString(),
       unread: 0,
+      extraModelIds: [],
     };
     
     set(state => ({
@@ -295,6 +297,38 @@ export const useStore = create((set, get) => ({
     });
   },
 
+  addExtraModelToConversation: (conversationId, modelId) => {
+    set(state => {
+      const conversations = state.conversations.map(conv => {
+        if (conv.id !== conversationId) return conv;
+        if (conv.modelId === modelId) return conv;
+        const existing = conv.extraModelIds || [];
+        if (existing.includes(modelId)) return conv;
+        if (existing.length >= 2) return conv;
+        return {
+          ...conv,
+          extraModelIds: [...existing, modelId],
+        };
+      });
+
+      return { conversations };
+    });
+  },
+
+  removeExtraModelFromConversation: (conversationId, modelId) => {
+    set(state => ({
+      conversations: state.conversations.map(conv => {
+        if (conv.id !== conversationId) return conv;
+        const existing = conv.extraModelIds || [];
+        if (!existing.includes(modelId)) return conv;
+        return {
+          ...conv,
+          extraModelIds: existing.filter(id => id !== modelId),
+        };
+      }),
+    }));
+  },
+
   sendMessage: async (content) => {
     const { activeConversationId, conversations, messages, apiSettings } = get();
     if (!activeConversationId || !content.trim()) return;
@@ -304,6 +338,14 @@ export const useStore = create((set, get) => ({
     
     const model = get().aiModels.find(m => m.id === conversation.modelId);
     if (!model) return;
+
+    const extraModelIds = Array.isArray(conversation.extraModelIds) ? conversation.extraModelIds : [];
+    const extraModels = extraModelIds
+      .map(id => get().aiModels.find(m => m.id === id))
+      .filter(Boolean);
+    const targetModels = [model, ...extraModels].filter((candidate, index, array) =>
+      candidate && array.findIndex(other => other.id === candidate.id) === index
+    );
     
     const runSearchFlow = async (query) => {
       const trimmedQuery = query.trim();
@@ -825,74 +867,91 @@ export const useStore = create((set, get) => ({
       return;
     }
     
-    // Regular text response
-    const aiMessage = {
+    // Regular text response (single or multi-model)
+    const aiMessages = targetModels.map(targetModel => ({
       id: uuidv4(),
       content: '',
       sender: 'ai',
-      modelId: model.id,
+      modelId: targetModel.id,
       timestamp: new Date().toISOString(),
       isTyping: true,
-    };
-    
+    }));
+
     set(state => ({
       messages: {
         ...state.messages,
         [activeConversationId]: [
           ...(state.messages[activeConversationId] || []),
-          aiMessage,
+          ...aiMessages,
         ],
       },
     }));
-    
-    try {
-      let response = '';
-      
-      if (apiSettings.provider === 'openrouter' && apiSettings.openrouterApiKey) {
-        // Call OpenRouter API
-        response = await callOpenRouter(content, model, apiSettings.openrouterApiKey);
-      } else if (apiSettings.provider === 'n8n' && apiSettings.n8nWebhookUrl) {
-        // Call n8n webhook
-        response = await callN8nWebhook(content, model, apiSettings.n8nWebhookUrl);
-      } else if (apiSettings.provider === 'lmstudio') {
-        // Call LM Studio
-        response = await callLMStudio(content, model, apiSettings.lmstudioUrl);
-      } else {
-        // Fallback to mock response
-        response = generateMockResponse(content, model);
+
+    const finalizeResponse = (messageId, responseContent, isPrimary) => {
+      set(state => ({
+        messages: {
+          ...state.messages,
+          [activeConversationId]: state.messages[activeConversationId].map(msg =>
+            msg.id === messageId
+              ? { ...msg, content: responseContent, isTyping: false }
+              : msg
+          ),
+        },
+        conversations: isPrimary
+          ? state.conversations.map(conv =>
+              conv.id === activeConversationId
+                ? { ...conv, lastMessage: responseContent, timestamp: new Date().toISOString() }
+                : conv
+            )
+          : state.conversations,
+      }));
+    };
+
+    const processModelResponse = async (targetModel, messageId, isPrimary) => {
+      try {
+        const effectiveProvider = (targetModel.provider || apiSettings.provider || '').toLowerCase();
+        let response = '';
+
+        if (effectiveProvider === 'openrouter') {
+          if (!apiSettings.openrouterApiKey) {
+            throw new Error('OpenRouter API key not configured');
+          }
+          response = await callOpenRouter(content, targetModel, apiSettings.openrouterApiKey);
+        } else if (effectiveProvider === 'n8n') {
+          if (!apiSettings.n8nWebhookUrl) {
+            throw new Error('n8n webhook URL not configured');
+          }
+          response = await callN8nWebhook(content, targetModel, apiSettings.n8nWebhookUrl);
+        } else if (effectiveProvider === 'lmstudio') {
+          if (!apiSettings.lmstudioUrl) {
+            throw new Error('LM Studio URL not configured');
+          }
+          response = await callLMStudio(content, targetModel, apiSettings.lmstudioUrl);
+        } else if (apiSettings.provider === 'openrouter' && apiSettings.openrouterApiKey) {
+          response = await callOpenRouter(content, targetModel, apiSettings.openrouterApiKey);
+        } else if (apiSettings.provider === 'n8n' && apiSettings.n8nWebhookUrl) {
+          response = await callN8nWebhook(content, targetModel, apiSettings.n8nWebhookUrl);
+        } else if (apiSettings.provider === 'lmstudio' && apiSettings.lmstudioUrl) {
+          response = await callLMStudio(content, targetModel, apiSettings.lmstudioUrl);
+        } else {
+          response = generateMockResponse(content, targetModel);
+        }
+
+        finalizeResponse(messageId, response, isPrimary);
+      } catch (error) {
+        console.error('Error getting AI response:', error);
+        const friendlyError = error?.message
+          ? `Error: ${error.message}`
+          : "Sorry, I couldn't process that request. Please check your API settings.";
+        finalizeResponse(messageId, friendlyError, isPrimary);
       }
-      
-      // Update AI message with response
-      set(state => ({
-        messages: {
-          ...state.messages,
-          [activeConversationId]: state.messages[activeConversationId].map(msg =>
-            msg.id === aiMessage.id
-              ? { ...msg, content: response, isTyping: false }
-              : msg
-          ),
-        },
-        conversations: state.conversations.map(conv =>
-          conv.id === activeConversationId
-            ? { ...conv, lastMessage: response, timestamp: new Date().toISOString() }
-            : conv
-        ),
-      }));
-    } catch (error) {
-      console.error('Error getting AI response:', error);
-      
-      // Update with error message
-      set(state => ({
-        messages: {
-          ...state.messages,
-          [activeConversationId]: state.messages[activeConversationId].map(msg =>
-            msg.id === aiMessage.id
-              ? { ...msg, content: "Sorry, I couldn't process that request. Please check your API settings.", isTyping: false }
-              : msg
-          ),
-        },
-      }));
-    }
+    };
+
+    await Promise.all(
+      targetModels.map((targetModel, index) =>
+        processModelResponse(targetModel, aiMessages[index].id, index === 0)
+      )
+    );
   },
   
   updateApiSettings: (settings) => {
@@ -997,8 +1056,8 @@ export const useStore = create((set, get) => ({
     }));
     
     try {
-      // Use OpenRouter only
-      const imageApiKey = apiSettings.openrouterApiKey;
+      const hasOpenAIKey = !!apiSettings.openaiApiKey;
+      const imageApiKey = apiSettings.openaiApiKey || apiSettings.openrouterApiKey;
       let isConnected = false;
       let error = null;
       
@@ -1007,16 +1066,34 @@ export const useStore = create((set, get) => ({
           imageApiConnectionStatus: {
             status: 'not_configured',
             lastChecked: new Date().toISOString(),
-            error: 'OpenRouter API key not set',
+            error: 'OpenAI image API key not set',
           },
         }));
         return;
+      }
+
+      if (hasOpenAIKey) {
+        try {
+          const response = await fetch('https://api.openai.com/v1/models', {
+            headers: {
+              'Authorization': `Bearer ${apiSettings.openaiApiKey}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          isConnected = response.ok;
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            error = errorData.error?.message || `HTTP ${response.status}`;
+          }
+        } catch (err) {
+          error = err.message || 'OpenAI connection failed';
+        }
       } else {
-        // Test OpenRouter connectivity (no direct image endpoint)
+        // Fallback to OpenRouter connectivity (legacy behavior)
         try {
           const response = await fetch('https://openrouter.ai/api/v1/models', {
             headers: {
-              'Authorization': `Bearer ${imageApiKey}`,
+              'Authorization': `Bearer ${apiSettings.openrouterApiKey}`,
               'HTTP-Referer': window.location.origin,
               'X-Title': 'AI Messenger'
             },
@@ -1027,7 +1104,7 @@ export const useStore = create((set, get) => ({
             error = errorData.error?.message || `HTTP ${response.status}`;
           }
         } catch (err) {
-          error = err.message || 'Connection failed';
+          error = err.message || 'OpenRouter connection failed';
         }
       }
       

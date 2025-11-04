@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { Send, Plus, Sliders, RotateCcw, MoreVertical, Bot, ChevronDown, ArrowUp, User, MessageSquare } from 'lucide-react';
+import { Send, Plus, Sliders, RotateCcw, MoreVertical, Bot, ChevronDown, ArrowUp, User, MessageSquare, UserPlus, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Message from './Message';
 import TypingIndicator from './TypingIndicator';
@@ -11,6 +11,7 @@ function ChatWindow() {
   const [message, setMessage] = useState('');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showMenuDropdown, setShowMenuDropdown] = useState(false);
+  const [showMultiModelDropdown, setShowMultiModelDropdown] = useState(false);
   const [showAIProfile, setShowAIProfile] = useState(false);
   const [showChatHistory, setShowChatHistory] = useState(false);
   const messagesEndRef = useRef(null);
@@ -18,6 +19,7 @@ function ChatWindow() {
   const inputRef = useRef(null);
   const dropdownRef = useRef(null);
   const menuDropdownRef = useRef(null);
+  const multiModelDropdownRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
   
   const { 
@@ -25,7 +27,9 @@ function ChatWindow() {
     conversations, 
     messages, 
     aiModels, 
-    sendMessage 
+    sendMessage,
+    addExtraModelToConversation,
+    removeExtraModelFromConversation
   } = useStore();
 
   const activeConversation = conversations.find(c => c.id === activeConversationId);
@@ -121,6 +125,9 @@ function ChatWindow() {
       if (menuDropdownRef.current && !menuDropdownRef.current.contains(event.target)) {
         setShowMenuDropdown(false);
       }
+      if (multiModelDropdownRef.current && !multiModelDropdownRef.current.contains(event.target)) {
+        setShowMultiModelDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -162,6 +169,31 @@ function ChatWindow() {
     );
   }
 
+  const selectedExtraModelIds = activeConversation.extraModelIds || [];
+  const extraModels = selectedExtraModelIds
+    .map(id => aiModels.find(model => model.id === id))
+    .filter(Boolean);
+  const multiModeActive = extraModels.length > 0;
+  const maxExtraModels = 2;
+  const canAddMoreModels = selectedExtraModelIds.length < maxExtraModels;
+  const availableMultiModels = aiModels
+    .filter(model => model.id !== activeModel.id)
+    .sort((a, b) => {
+      const aSelected = selectedExtraModelIds.includes(a.id);
+      const bSelected = selectedExtraModelIds.includes(b.id);
+      if (aSelected === bSelected) return a.name.localeCompare(b.name);
+      return aSelected ? -1 : 1;
+    });
+
+  const handleToggleExtraModel = (modelId) => {
+    if (!activeConversation) return;
+    if (selectedExtraModelIds.includes(modelId)) {
+      removeExtraModelFromConversation(activeConversation.id, modelId);
+    } else if (selectedExtraModelIds.length < maxExtraModels) {
+      addExtraModelToConversation(activeConversation.id, modelId);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Chat Header */}
@@ -187,50 +219,138 @@ function ChatWindow() {
               <p className="text-xs text-text-secondary">
                 {activeModel.isOnline ? activeModel.status : 'Offline'}
               </p>
+              {multiModeActive && (
+                <div className="flex items-center gap-2 mt-3 text-[11px] text-text-secondary">
+                  {[activeModel, ...extraModels].map((modelEntry, index) => (
+                    <React.Fragment key={modelEntry.id}>
+                      {index > 0 && <span className="h-px w-6 bg-border/50" />}
+                      <span className="flex items-center gap-1">
+                        <span className="inline-flex h-2 w-2 rounded-full bg-primary/80" />
+                        {modelEntry.name}
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-          <div className="relative" ref={menuDropdownRef}>
-            <button 
-              onClick={() => setShowMenuDropdown(!showMenuDropdown)}
-              className="p-2 hover:bg-surface rounded-lg transition-colors"
-            >
-              <MoreVertical className="w-5 h-5" />
-            </button>
-
-            {/* Dropdown Menu */}
-            <AnimatePresence>
-              {showMenuDropdown && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute right-0 top-full mt-2 w-56 bg-surface rounded-xl border border-border shadow-xl overflow-hidden z-50"
-                >
-                  <div className="p-1">
-                    <button
-                      onClick={() => {
-                        setShowAIProfile(true);
-                        setShowMenuDropdown(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-surface-light transition-colors text-left"
-                    >
-                      <User className="w-4 h-4 text-text-secondary" />
-                      <span className="text-sm">AI Profile</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowChatHistory(true);
-                        setShowMenuDropdown(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-surface-light transition-colors text-left"
-                    >
-                      <MessageSquare className="w-4 h-4 text-text-secondary" />
-                      <span className="text-sm">Chat History</span>
-                    </button>
-                  </div>
-                </motion.div>
+          <div className="flex items-center gap-2">
+            <div className="relative" ref={multiModelDropdownRef}>
+              <button
+                onClick={() => {
+                  setShowMultiModelDropdown(!showMultiModelDropdown);
+                  setShowMenuDropdown(false);
+                }}
+                className="p-2 hover:bg-surface rounded-lg transition-colors"
+                title="Add models to multi-chat"
+              >
+                <UserPlus className="w-5 h-5" />
+              </button>
+              {multiModeActive && (
+                <span className="absolute -top-1 -right-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-black">
+                  {selectedExtraModelIds.length + 1}
+                </span>
               )}
-            </AnimatePresence>
+
+              <AnimatePresence>
+                {showMultiModelDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute right-0 top-full mt-2 w-64 bg-surface rounded-xl border border-border shadow-xl overflow-hidden z-50"
+                  >
+                    <div className="p-2">
+                      <p className="text-xs text-text-secondary px-3 py-2">Multi-chat models</p>
+                      {availableMultiModels.map(modelOption => {
+                        const isSelected = selectedExtraModelIds.includes(modelOption.id);
+                        const disabled = !isSelected && !canAddMoreModels;
+                        return (
+                          <button
+                            key={modelOption.id}
+                            onClick={() => handleToggleExtraModel(modelOption.id)}
+                            disabled={disabled}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-left ${
+                              isSelected ? 'bg-primary/15 border border-primary/30' : 'hover:bg-surface-light'
+                            } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          >
+                            <img
+                              src={modelOption.avatar}
+                              alt={modelOption.name}
+                              className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) => {
+                                const seed = encodeURIComponent(modelOption.apiModel || modelOption.name || 'aimessenger');
+                                e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
+                              }}
+                            />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-text">{modelOption.name}</p>
+                              <p className="text-xs text-text-secondary">{modelOption.provider}</p>
+                            </div>
+                            {isSelected ? (
+                              <Check className="w-4 h-4 text-primary" />
+                            ) : (
+                              <span className="text-[11px] text-text-secondary">Add</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      {selectedExtraModelIds.length >= maxExtraModels && (
+                        <p className="mt-2 px-3 text-[11px] text-text-secondary/80">
+                          Maximum of three models per conversation.
+                        </p>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            <div className="relative" ref={menuDropdownRef}>
+              <button 
+                onClick={() => {
+                  setShowMenuDropdown(!showMenuDropdown);
+                  setShowMultiModelDropdown(false);
+                }}
+                className="p-2 hover:bg-surface rounded-lg transition-colors"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+
+              {/* Dropdown Menu */}
+              <AnimatePresence>
+                {showMenuDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute right-0 top-full mt-2 w-56 bg-surface rounded-xl border border-border shadow-xl overflow-hidden z-50"
+                  >
+                    <div className="p-1">
+                      <button
+                        onClick={() => {
+                          setShowAIProfile(true);
+                          setShowMenuDropdown(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-surface-light transition-colors text-left"
+                      >
+                        <User className="w-4 h-4 text-text-secondary" />
+                        <span className="text-sm">AI Profile</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowChatHistory(true);
+                          setShowMenuDropdown(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-surface-light transition-colors text-left"
+                      >
+                        <MessageSquare className="w-4 h-4 text-text-secondary" />
+                        <span className="text-sm">Chat History</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       </div>
@@ -257,12 +377,25 @@ function ChatWindow() {
                   }
                 } : undefined;
 
+                const messageModel =
+                  msg.sender === 'ai'
+                    ? aiModels.find(m => m.id === msg.modelId) || activeModel
+                    : null;
+
+                const previousMessage = array[index - 1];
+                const showModelLabel =
+                  msg.sender === 'ai' && (
+                    selectedExtraModelIds.length > 0 ||
+                    (previousMessage && previousMessage.sender === 'ai')
+                  );
+
                 return (
                   <Message 
                     key={msg.id} 
                     message={msg} 
-                    model={msg.sender === 'ai' ? activeModel : null}
+                    model={messageModel}
                     onRetry={handleRetry}
+                    showModelLabel={showModelLabel}
                   />
                 );
               })}

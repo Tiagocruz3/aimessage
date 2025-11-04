@@ -134,7 +134,7 @@ const ImageSearchResultsView = ({ heading, results = [], query }) => {
   );
 };
 
-function Message({ message, model, onRetry }) {
+function Message({ message, model, onRetry, showModelLabel = false }) {
   // Don't render typing messages, but show "Generating image..." messages
   if (!message) {
     return null;
@@ -321,7 +321,14 @@ function Message({ message, model, onRetry }) {
         
         <div className={`flex-1 ${isUser ? 'flex justify-end' : ''}`}>
           <div className={`${isUser ? 'max-w-[80%]' : 'max-w-[85%]'}`}>
-          <div className={`relative rounded-2xl ${
+            {!isUser && model && showModelLabel && (
+              <div className="flex items-center gap-2 mb-3 text-[11px] uppercase tracking-[0.25em] text-text-secondary/80">
+                <span className="flex-1 h-px bg-border/40" />
+                <span>{model.name}</span>
+                <span className="flex-1 h-px bg-border/40" />
+              </div>
+            )}
+            <div className={`relative rounded-2xl ${
             isUser 
               ? 'bg-primary text-white px-4 py-3 shadow-sm' 
               : 'bg-surface-light px-5 py-4 shadow-sm'

@@ -1,13 +1,31 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { X, Download, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import Message from './Message';
+import { useStore } from '../store/useStore';
 
 function ChatHistoryModal({ messages, model, onClose }) {
+  const { aiModels } = useStore();
+
+  const findModelById = (modelId) => {
+    if (!modelId) return null;
+    return aiModels.find(item => item.id === modelId) || null;
+  };
+
+  const hasMultipleModels = useMemo(() => {
+    const uniqueModels = new Set(
+      messages
+        .filter(msg => msg.sender === 'ai' && !msg.isTyping && msg.modelId)
+        .map(msg => msg.modelId)
+    );
+    return uniqueModels.size > 1;
+  }, [messages]);
+
   const exportChat = () => {
     const chatText = messages.map(msg => {
-      const sender = msg.sender === 'user' ? 'You' : model?.name || 'AI';
+      const messageModel = msg.sender === 'ai' ? findModelById(msg.modelId) || model : null;
+      const sender = msg.sender === 'user' ? 'You' : messageModel?.name || model?.name || 'AI';
       const timestamp = msg.timestamp ? formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true }) : '';
       return `[${timestamp}] ${sender}: ${msg.content}`;
     }).join('\n\n');
@@ -77,13 +95,21 @@ function ChatHistoryModal({ messages, model, onClose }) {
               <div className="space-y-4 max-w-3xl mx-auto">
                 {messages
                   .filter(msg => !msg.isTyping)
-                  .map((msg) => (
+                  .map((msg, index, array) => {
+                    const messageModel = msg.sender === 'ai' ? findModelById(msg.modelId) || model : null;
+                    const previousMessage = array[index - 1];
+                    const showModelLabel =
+                      msg.sender === 'ai' && (hasMultipleModels || (previousMessage && previousMessage.sender === 'ai'));
+
+                    return (
                     <Message
                       key={msg.id}
                       message={msg}
-                      model={msg.sender === 'ai' ? model : null}
+                      model={messageModel}
+                      showModelLabel={showModelLabel}
                     />
-                  ))}
+                    );
+                  })}
               </div>
             )}
           </div>
