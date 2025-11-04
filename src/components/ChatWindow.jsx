@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { Send, Plus, Sliders, RotateCcw, MoreVertical, Bot, ChevronDown, ArrowUp, User, MessageSquare, UserPlus, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -38,6 +38,13 @@ function ChatWindow() {
     : null;
   
   const conversationMessages = messages[activeConversationId] || [];
+  const modelsById = useMemo(() => {
+    const map = {};
+    aiModels.forEach(model => {
+      map[model.id] = model;
+    });
+    return map;
+  }, [aiModels]);
 
   // Check if user is near bottom of scroll container
   const checkIfNearBottom = () => {
@@ -192,6 +199,111 @@ function ChatWindow() {
     } else if (selectedExtraModelIds.length < maxExtraModels) {
       addExtraModelToConversation(activeConversation.id, modelId);
     }
+  };
+
+  const nonTypingMessages = conversationMessages.filter(msg => !msg.isTyping);
+
+  const renderItems = [];
+  let index = 0;
+  let lastUserMessage = null;
+
+  while (index < nonTypingMessages.length) {
+    const current = nonTypingMessages[index];
+
+    if (current.sender === 'user') {
+      renderItems.push({
+        type: 'single',
+        message: current,
+        originalIndex: index,
+        previousUserMessage: lastUserMessage,
+        key: current.id,
+      });
+      lastUserMessage = current;
+      index += 1;
+      continue;
+    }
+
+    if (current.sender === 'ai' && current.responseGroupId) {
+      const groupId = current.responseGroupId;
+      const groupMessages = [];
+      const startIndex = index;
+
+      while (index < nonTypingMessages.length) {
+        const candidate = nonTypingMessages[index];
+        if (candidate.sender === 'ai' && candidate.responseGroupId === groupId) {
+          groupMessages.push(candidate);
+          index += 1;
+        } else {
+          break;
+        }
+      }
+
+      if (groupMessages.length > 1) {
+        renderItems.push({
+          type: 'group',
+          messages: groupMessages,
+          previousUserMessage: lastUserMessage,
+          key: `group-${groupId || groupMessages[0].id}`,
+        });
+        continue;
+      }
+
+      const singleMessage = groupMessages[0];
+      renderItems.push({
+        type: 'single',
+        message: singleMessage,
+        originalIndex: startIndex,
+        previousUserMessage: lastUserMessage,
+        key: singleMessage.id,
+      });
+      continue;
+    }
+
+    renderItems.push({
+      type: 'single',
+      message: current,
+      originalIndex: index,
+      previousUserMessage: lastUserMessage,
+      key: current.id,
+    });
+
+    index += 1;
+  }
+
+  const MultiModelResponseGroup = ({ responses, onRetry }) => {
+    const count = responses.length;
+    const gridCols = count >= 3 ? 'md:grid-cols-3' : count === 2 ? 'md:grid-cols-2' : 'md:grid-cols-1';
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        className="my-6"
+      >
+        <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.35em] text-text-secondary/70 mb-4">
+          <span className="flex-1 h-px bg-border/40" />
+          <span>Multi-model responses</span>
+          <span className="flex-1 h-px bg-border/40" />
+        </div>
+        <div className={`grid grid-cols-1 gap-4 ${gridCols}`}>
+          {responses.map((response) => {
+            const responseModel = modelsById[response.modelId] || activeModel;
+            return (
+              <div key={response.id} className="flex">
+                <Message
+                  message={response}
+                  model={responseModel}
+                  onRetry={onRetry}
+                  showModelLabel
+                  isGrouped
+                />
+              </div>
+            );
+          })}
+        </div>
+      </motion.div>
+    );
   };
 
   return (
@@ -362,43 +474,49 @@ function ChatWindow() {
       >
         <div className="max-w-3xl mx-auto">
           <AnimatePresence initial={false}>
-            {conversationMessages
-              .filter(msg => !msg.isTyping) // Filter out typing messages - they're shown as TypingIndicator
-              .map((msg, index, array) => {
-                // Find the previous user message for retry functionality
-                const previousUserMessage = array
-                  .slice(0, index)
-                  .reverse()
-                  .find(m => m.sender === 'user');
-                
-                const handleRetry = previousUserMessage ? () => {
-                  if (previousUserMessage) {
-                    sendMessage(previousUserMessage.content);
-                  }
-                } : undefined;
-
-                const messageModel =
-                  msg.sender === 'ai'
-                    ? aiModels.find(m => m.id === msg.modelId) || activeModel
-                    : null;
-
-                const previousMessage = array[index - 1];
-                const showModelLabel =
-                  msg.sender === 'ai' && (
-                    selectedExtraModelIds.length > 0 ||
-                    (previousMessage && previousMessage.sender === 'ai')
-                  );
+            {renderItems.map((item) => {
+              if (item.type === 'group') {
+                const retryHandler = item.previousUserMessage && activeConversation
+                  ? () => sendMessage(item.previousUserMessage.content)
+                  : undefined;
 
                 return (
-                  <Message 
-                    key={msg.id} 
-                    message={msg} 
-                    model={messageModel}
-                    onRetry={handleRetry}
-                    showModelLabel={showModelLabel}
+                  <MultiModelResponseGroup
+                    key={item.key}
+                    responses={item.messages}
+                    onRetry={retryHandler}
                   />
                 );
-              })}
+              }
+
+              const msg = item.message;
+              const previousUserMessage = item.previousUserMessage;
+              const handleRetry = previousUserMessage && msg.sender === 'ai'
+                ? () => sendMessage(previousUserMessage.content)
+                : undefined;
+
+              const previousMessage = item.originalIndex > 0 ? nonTypingMessages[item.originalIndex - 1] : null;
+              const showModelLabel =
+                msg.sender === 'ai' && (
+                  selectedExtraModelIds.length > 0 ||
+                  (previousMessage && previousMessage.sender === 'ai')
+                );
+
+              const messageModel =
+                msg.sender === 'ai'
+                  ? modelsById[msg.modelId] || activeModel
+                  : null;
+
+              return (
+                <Message 
+                  key={item.key} 
+                  message={msg} 
+                  model={messageModel}
+                  onRetry={handleRetry}
+                  showModelLabel={showModelLabel}
+                />
+              );
+            })}
           </AnimatePresence>
           
           {conversationMessages.some(msg => msg.isTyping) && activeModel && (

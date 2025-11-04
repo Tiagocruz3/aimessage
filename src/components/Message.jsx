@@ -134,7 +134,7 @@ const ImageSearchResultsView = ({ heading, results = [], query }) => {
   );
 };
 
-function Message({ message, model, onRetry, showModelLabel = false }) {
+function Message({ message, model, onRetry, showModelLabel = false, isGrouped = false }) {
   // Don't render typing messages, but show "Generating image..." messages
   if (!message) {
     return null;
@@ -300,14 +300,28 @@ function Message({ message, model, onRetry, showModelLabel = false }) {
     }
   };
 
+  const outerClassName = `flex ${isUser ? 'justify-end' : 'justify-start'} ${isGrouped ? 'mb-0 h-full' : 'mb-4'}`;
+  const innerWrapperClass = `flex gap-3 w-full ${isUser ? 'flex-row-reverse' : ''} ${isGrouped ? 'h-full' : ''}`;
+  const contentWrapperClass = `${isGrouped ? 'flex-1 flex ' : 'flex-1'} ${isUser ? 'justify-end' : ''} ${isGrouped ? 'h-full' : ''}`;
+  const widthClass = isGrouped
+    ? 'w-full max-w-none h-full flex flex-col'
+    : isUser
+      ? 'max-w-[80%]'
+      : 'max-w-[85%]';
+  const bubbleClass = `${
+    isUser 
+      ? 'bg-primary text-white px-4 py-3 shadow-sm' 
+      : 'bg-surface-light px-5 py-4 shadow-sm'
+  } ${isGrouped ? 'flex-1 flex flex-col h-full' : ''}`;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}
+      className={outerClassName}
     >
-      <div className={`flex gap-3 w-full ${isUser ? 'flex-row-reverse' : ''}`}>
+      <div className={innerWrapperClass}>
         {!isUser && model && (
           <img
             src={model.avatar}
@@ -319,8 +333,8 @@ function Message({ message, model, onRetry, showModelLabel = false }) {
           />
         )}
         
-        <div className={`flex-1 ${isUser ? 'flex justify-end' : ''}`}>
-          <div className={`${isUser ? 'max-w-[80%]' : 'max-w-[85%]'}`}>
+        <div className={contentWrapperClass}>
+          <div className={widthClass}>
             {!isUser && model && showModelLabel && (
               <div className="flex items-center gap-2 mb-3 text-[11px] uppercase tracking-[0.25em] text-text-secondary/80">
                 <span className="flex-1 h-px bg-border/40" />
@@ -328,11 +342,7 @@ function Message({ message, model, onRetry, showModelLabel = false }) {
                 <span className="flex-1 h-px bg-border/40" />
               </div>
             )}
-            <div className={`relative rounded-2xl ${
-            isUser 
-              ? 'bg-primary text-white px-4 py-3 shadow-sm' 
-              : 'bg-surface-light px-5 py-4 shadow-sm'
-          }`}>
+            <div className={`relative rounded-2xl ${bubbleClass}`}>
             {isUser ? (
               <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
             ) : (
@@ -484,7 +494,7 @@ function Message({ message, model, onRetry, showModelLabel = false }) {
 
             {/* Action buttons for AI messages */}
             {!isUser && (
-              <div className="flex items-center gap-1 mt-3 pt-3 border-t border-border/30">
+              <div className={`flex items-center gap-1 mt-3 pt-3 border-t border-border/30 ${isGrouped ? 'justify-end' : ''}`}>
                 <button
                   onClick={handleCopy}
                   className="p-1.5 rounded hover:bg-surface transition-colors group"

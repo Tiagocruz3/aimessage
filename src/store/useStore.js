@@ -868,6 +868,8 @@ export const useStore = create((set, get) => ({
     }
     
     // Regular text response (single or multi-model)
+    const responseGroupId = targetModels.length > 1 ? uuidv4() : null;
+
     const aiMessages = targetModels.map(targetModel => ({
       id: uuidv4(),
       content: '',
@@ -875,6 +877,7 @@ export const useStore = create((set, get) => ({
       modelId: targetModel.id,
       timestamp: new Date().toISOString(),
       isTyping: true,
+      responseGroupId,
     }));
 
     set(state => ({
