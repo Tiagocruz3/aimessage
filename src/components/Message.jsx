@@ -8,12 +8,12 @@ import toast from 'react-hot-toast';
 const SearchResultsView = ({ summary, results = [], query }) => {
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-primary/30 bg-primary/10 p-4">
-        <p className="text-xs uppercase tracking-wide text-primary/80">Summary</p>
-        <p className="mt-2 text-sm text-text whitespace-pre-wrap leading-relaxed">{summary}</p>
+      <div className="rounded-xl border border-border/60 bg-surface/40 p-3">
+        <p className="text-[10px] uppercase tracking-wide text-primary/70">Summary</p>
+        <p className="mt-1 text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">{summary}</p>
         {query && (
-          <p className="mt-3 text-xs text-text-secondary">
-            Query: <span className="text-text">{query}</span>
+          <p className="mt-2 text-[11px] text-text-secondary/80">
+            Query: <span className="text-text-secondary">{query}</span>
           </p>
         )}
       </div>
