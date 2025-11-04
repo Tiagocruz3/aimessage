@@ -47,6 +47,43 @@ const shortenSummary = (text, maxLength = 320) => {
     : `${trimmed}…`;
 };
 
+const extractImageSearchQuery = (input) => {
+  if (typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const commandMatch = trimmed.match(/^(?:\/imgsearch|\/image-search|\/imagesearch|\/images)\s+(.+)/i);
+  if (commandMatch) {
+    return commandMatch[1].trim();
+  }
+
+  const imageSearchForMatch = trimmed.match(/^image\s+search(?:\s+for)?\s+(.+)/i);
+  if (imageSearchForMatch) {
+    return imageSearchForMatch[1].trim();
+  }
+
+  const searchForImagesMatch = trimmed.match(/^search(?:\s+the\s+web)?(?:\s+for)?\s+(.+?)\s+(?:images?|pictures?|photos?)$/i);
+  if (searchForImagesMatch) {
+    return searchForImagesMatch[1].trim();
+  }
+
+  const searchImagesOfMatch = trimmed.match(/^search(?:\s+the\s+web)?(?:\s+for)?(?:\s+an?)?\s*(?:images?|pictures?|photos?)\s+(?:of|for)?\s+(.+)/i);
+  if (searchImagesOfMatch) {
+    return searchImagesOfMatch[1].trim();
+  }
+
+  const containsSearchAndImages = /\bsearch\b/i.test(trimmed) && /\bimages?|pictures?|photos?\b/i.test(trimmed);
+  if (containsSearchAndImages) {
+    return trimmed
+      .replace(/^search(?:\s+the\s+web)?(?:\s+for)?/i, '')
+      .replace(/(?:images?|pictures?|photos?)$/i, '')
+      .replace(/(?:images?|pictures?|photos?)\s+(?:of|for)\s*/i, '')
+      .trim();
+  }
+
+  return null;
+};
+
 const envOpenRouterApiKey = getTrimmedEnv('VITE_OPENROUTER_API_KEY');
 const envOpenAIApiKey = getTrimmedEnv('VITE_OPENAI_API_KEY');
 const envN8nWebhookUrl = getTrimmedEnv('VITE_N8N_WEBHOOK_URL');
@@ -387,8 +424,138 @@ export const useStore = create((set, get) => ({
       }
     };
 
+    const runImageSearchFlow = async (query) => {
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) {
+        return;
+      }
+
+      const searchingMsg = {
+        id: uuidv4(),
+        content: 'Searching for images...\n',
+        sender: 'ai',
+        modelId: model.id,
+        timestamp: new Date().toISOString(),
+        isTyping: true,
+      };
+
+      set(state => ({
+        messages: {
+          ...state.messages,
+          [activeConversationId]: [
+            ...(state.messages[activeConversationId] || []),
+            searchingMsg,
+          ],
+        },
+      }));
+
+      try {
+        const data = await fetchSearxResults(trimmedQuery, apiSettings.searchUrl, {
+          categories: 'images',
+          engines: 'google_images,bing_images,duckduckgo_images',
+        });
+
+        const results = Array.isArray(data.results) ? data.results : [];
+        const top = results
+          .filter(r => r?.img_src || r?.thumbnail || r?.url)
+          .slice(0, 12);
+
+        if (top.length === 0) {
+          set(state => ({
+            messages: {
+              ...state.messages,
+              [activeConversationId]: state.messages[activeConversationId].map(msg =>
+                msg.id === searchingMsg.id
+                  ? {
+                      ...msg,
+                      content: `No image results found for "${trimmedQuery}".`,
+                      type: 'image_search_results',
+                      searchResults: [],
+                      searchQuery: trimmedQuery,
+                      isTyping: false,
+                    }
+                  : msg
+              ),
+            },
+          }));
+          return;
+        }
+
+        const formattedResults = top.map((r, i) => {
+          const imageUrl = r.img_src || r.thumbnail || r.url;
+          if (!imageUrl) {
+            return null;
+          }
+
+          const pageUrl = r.url || r.source || imageUrl;
+          let source = r.source || '';
+          if (!source && pageUrl) {
+            try {
+              const hostname = new URL(pageUrl).hostname.replace(/^www\./i, '');
+              source = hostname;
+            } catch (error) {
+              source = '';
+            }
+          }
+
+          return {
+            title: r.title || `Image ${i + 1}`,
+            url: pageUrl,
+            imageUrl,
+            thumbnail: r.thumbnail || imageUrl,
+            source,
+            index: i + 1,
+          };
+        }).filter(Boolean);
+
+        set(state => ({
+          messages: {
+            ...state.messages,
+            [activeConversationId]: state.messages[activeConversationId].map(msg =>
+              msg.id === searchingMsg.id
+                ? {
+                    ...msg,
+                    content: `Top image results for "${trimmedQuery}"`,
+                    type: 'image_search_results',
+                    searchResults: formattedResults,
+                    searchQuery: trimmedQuery,
+                    isTyping: false,
+                  }
+                : msg
+            ),
+          },
+          conversations: state.conversations.map(conv =>
+            conv.id === activeConversationId
+              ? { ...conv, lastMessage: `Image search: ${trimmedQuery}`, timestamp: new Date().toISOString() }
+              : conv
+          ),
+        }));
+      } catch (error) {
+        console.error('Image search error:', error);
+        const friendly = error.message || 'Unknown error';
+        set(state => ({
+          messages: {
+            ...state.messages,
+            [activeConversationId]: state.messages[activeConversationId].map(msg =>
+              msg.id === searchingMsg.id
+                ? {
+                    ...msg,
+                    content: `Image search failed: ${friendly}`,
+                    type: 'image_search_results',
+                    searchResults: [],
+                    searchQuery: trimmedQuery,
+                    isTyping: false,
+                  }
+                : msg
+            ),
+          },
+        }));
+      }
+    };
+
     // Prepare normalized content
     const lowerContent = content.toLowerCase();
+    const imageSearchQuery = extractImageSearchQuery(content);
     
     // Check if this is a web search command first
     const webCmdMatch = content.trim().match(/^\s*(?:\/web|\/search)\s+(.+)/i);
@@ -451,6 +618,36 @@ export const useStore = create((set, get) => ({
       return;
     }
 
+    if (imageSearchQuery) {
+      const query = imageSearchQuery.trim();
+      if (query) {
+        const userMessage = {
+          id: uuidv4(),
+          content,
+          sender: 'user',
+          timestamp: new Date().toISOString(),
+        };
+
+        set(state => ({
+          messages: {
+            ...state.messages,
+            [activeConversationId]: [
+              ...(state.messages[activeConversationId] || []),
+              userMessage,
+            ],
+          },
+          conversations: state.conversations.map(conv =>
+            conv.id === activeConversationId
+              ? { ...conv, lastMessage: content, timestamp: userMessage.timestamp }
+              : conv
+          ),
+        }));
+
+        await runImageSearchFlow(query);
+      }
+      return;
+    }
+
     // Check if this is an image generation request
     const hasImageCommand = lowerContent.startsWith('/img ') || lowerContent.startsWith('/image ') || lowerContent.startsWith('!img ') || lowerContent.startsWith('!image ');
     const imageKeywords = [
@@ -458,27 +655,30 @@ export const useStore = create((set, get) => ({
       'generate a picture', 'create a picture', 'make a picture', 'show me', 'show an image',
       'show a picture', 'show a photo', 'photo of', 'photograph of', 'draw me', 'create a photo',
       'generate a photo', 'make a photo', 'image', 'picture', 'photo', 'drawing', 'illustration',
-      'visual', 'depiction', 'render', 'sketch', 'portrait', 'graphic'
+      'visual', 'depiction', 'render', 'sketch', 'portrait', 'graphic', 'painting', 'art'
     ];
     
     // Check for explicit image keywords
     const hasImageKeywords = imageKeywords.some(keyword => lowerContent.includes(keyword));
     
     // Check if message seems like an image request (short messages with common patterns)
-    const startsWithImageRequest = /^(show|generate|create|make|draw|give me|i want|can i see|i need|i'd like|display)/i.test(lowerContent);
+    const startsWithExplicitVisual = /^(show|draw|paint|illustrate|sketch|display|render)/i.test(lowerContent);
+    const startsWithGeneralCreate = /^(generate|create|make|give me|i want|can i see|i need|i'd like)/i.test(lowerContent);
     const isQuestion = /^(how|what|why|when|where|who|explain|tell|describe|can you|could you)/i.test(lowerContent);
     const isShortMessage = lowerContent.length < 100;
     const isVeryShortSubject = !/[?.!]/.test(lowerContent) && lowerContent.trim().split(/\s+/).length <= 6 && !isQuestion;
+    const containsVisualLanguage = /(image|picture|photo|drawing|illustration|visual|depiction|art|sketch|render|portrait|graphic|painting)/i.test(lowerContent);
     
-    const isLikelyImageRequest = 
-      startsWithImageRequest &&
-      isShortMessage &&
-      !isQuestion;
+    const isLikelyImageRequest = (
+      (startsWithExplicitVisual && isShortMessage && !isQuestion) ||
+      (startsWithGeneralCreate && containsVisualLanguage && isShortMessage && !isQuestion) ||
+      (isVeryShortSubject && containsVisualLanguage)
+    );
     
     // Only treat as image request when user explicitly asks for an image
     // via command, clear image-related keywords, or likely phrasing.
     // Do NOT trigger on very short generic messages like "hi".
-    const isImageRequest = hasImageCommand || hasImageKeywords || isLikelyImageRequest;
+    const isImageRequest = (!imageSearchQuery) && (hasImageCommand || hasImageKeywords || isLikelyImageRequest);
     
     const userMessage = {
       id: uuidv4(),
@@ -969,14 +1169,44 @@ async function callOpenRouterWithContext(message, context, model, apiKey) {
   return content;
 }
 
-async function fetchSearxResults(query, searchUrl) {
+async function fetchSearxResults(query, searchUrl, options = {}) {
   const base = (searchUrl || '').trim();
   if (!base) {
     throw new Error('Search URL not configured in Settings');
   }
 
   const normalized = base.endsWith('/') ? base : `${base}/`;
-  const searchEndpoint = `${normalized}search?format=json&q=${encodeURIComponent(query)}&language=en-US&safe=1&categories=general&engines=google,bing,duckduckgo`;
+  const {
+    categories = 'general',
+    engines = 'google,bing,duckduckgo',
+    language = 'en-US',
+    safe = '1',
+    format = 'json',
+    extraParams = {},
+  } = options || {};
+
+  const params = new URLSearchParams({
+    format,
+    q: query,
+    language,
+    safe,
+  });
+
+  if (categories) {
+    params.set('categories', categories);
+  }
+
+  if (engines) {
+    params.set('engines', engines);
+  }
+
+  Object.entries(extraParams || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value));
+    }
+  });
+
+  const searchEndpoint = `${normalized}search?${params.toString()}`;
 
   try {
     const response = await fetch(searchEndpoint, {

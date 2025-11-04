@@ -66,6 +66,74 @@ const SearchResultsView = ({ summary, results = [], query }) => {
   );
 };
 
+const ImageSearchResultsView = ({ heading, results = [], query }) => {
+  const hasResults = Array.isArray(results) && results.length > 0;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-border/60 bg-surface/40 p-3">
+        <p className="text-[10px] uppercase tracking-wide text-primary/70">Image Search</p>
+        {heading && (
+          <p className="mt-1 text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">{heading}</p>
+        )}
+        {query && (
+          <p className="mt-2 text-[11px] text-text-secondary/80">
+            Query: <span className="text-text-secondary">{query}</span>
+          </p>
+        )}
+      </div>
+
+      {hasResults ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {results.map((result) => {
+            if (!result.imageUrl) {
+              return null;
+            }
+
+            const href = result.url || result.imageUrl;
+            return (
+              <a
+                key={`${result.imageUrl}-${result.index}`}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group relative block overflow-hidden rounded-2xl border border-border/60 bg-black/30"
+                title={result.title}
+              >
+                <div className="relative aspect-[4/3] overflow-hidden">
+                  <img
+                    src={result.imageUrl}
+                    alt={result.title}
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col gap-1 p-3">
+                  <p className="text-sm font-medium text-text truncate">
+                    {result.title}
+                  </p>
+                  {result.source && (
+                    <p className="text-xs text-text-secondary truncate">
+                      {result.source}
+                    </p>
+                  )}
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border/60 bg-surface/40 p-4 text-sm text-text-secondary">
+          No images to display for this search.
+        </div>
+      )}
+    </div>
+  );
+};
+
 function Message({ message, model, onRetry }) {
   // Don't render typing messages, but show "Generating image..." messages
   if (!message) {
@@ -117,6 +185,7 @@ function Message({ message, model, onRetry }) {
   const content = message.content || '';
   const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
   const isSearchResults = message.type === 'search_results' && Array.isArray(message.searchResults);
+  const isImageSearchResults = message.type === 'image_search_results' && Array.isArray(message.searchResults);
 
   // Safe timestamp formatting
   let timeAgo = 'just now';
@@ -264,6 +333,12 @@ function Message({ message, model, onRetry }) {
                 {isSearchResults ? (
                   <SearchResultsView
                     summary={content}
+                    results={message.searchResults}
+                    query={message.searchQuery}
+                  />
+                ) : isImageSearchResults ? (
+                  <ImageSearchResultsView
+                    heading={content}
                     results={message.searchResults}
                     query={message.searchQuery}
                   />
