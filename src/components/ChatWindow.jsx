@@ -192,6 +192,71 @@ function ChatWindow() {
       return aSelected ? -1 : 1;
     });
 
+  const participatingModels = useMemo(() => {
+    const base = activeModel ? [activeModel, ...extraModels] : [];
+    const unique = [];
+    const seen = new Set();
+
+    base.forEach(modelEntry => {
+      if (modelEntry && !seen.has(modelEntry.id)) {
+        seen.add(modelEntry.id);
+        unique.push(modelEntry);
+      }
+    });
+
+    return unique;
+  }, [activeModel, extraModels]);
+
+  const messagesByModel = useMemo(() => {
+    const map = {};
+
+    if (participatingModels.length === 0) {
+      return map;
+    }
+
+    participatingModels.forEach(modelEntry => {
+      map[modelEntry.id] = [];
+    });
+
+    const primaryModelId = participatingModels[0]?.id;
+
+    conversationMessages.forEach(msg => {
+      if (msg.sender === 'user') {
+        participatingModels.forEach(modelEntry => {
+          map[modelEntry.id].push({
+            message: msg,
+            isShared: true,
+          });
+        });
+        return;
+      }
+
+      if (msg.sender === 'ai' && map[msg.modelId]) {
+        map[msg.modelId].push({
+          message: msg,
+          isShared: false,
+        });
+        return;
+      }
+
+      if (msg.sender === 'ai' && primaryModelId && map[primaryModelId]) {
+        map[primaryModelId].push({
+          message: msg,
+          isShared: false,
+        });
+      }
+    });
+
+    return map;
+  }, [conversationMessages, participatingModels]);
+
+  const columnGridClass = useMemo(() => {
+    const count = participatingModels.length;
+    if (count >= 3) return 'md:grid-cols-3';
+    if (count === 2) return 'md:grid-cols-2';
+    return 'md:grid-cols-1';
+  }, [participatingModels]);
+
   const handleToggleExtraModel = (modelId) => {
     if (!activeConversation) return;
     if (selectedExtraModelIds.includes(modelId)) {
@@ -201,74 +266,80 @@ function ChatWindow() {
     }
   };
 
-  const nonTypingMessages = conversationMessages.filter(msg => !msg.isTyping);
+  const nonTypingMessages = useMemo(() => (
+    conversationMessages.filter(msg => !msg.isTyping)
+  ), [conversationMessages]);
 
-  const renderItems = [];
-  let index = 0;
-  let lastUserMessage = null;
+  const renderItems = useMemo(() => {
+    const items = [];
+    let index = 0;
+    let lastUserMessage = null;
 
-  while (index < nonTypingMessages.length) {
-    const current = nonTypingMessages[index];
+    while (index < nonTypingMessages.length) {
+      const current = nonTypingMessages[index];
 
-    if (current.sender === 'user') {
-      renderItems.push({
+      if (current.sender === 'user') {
+        items.push({
+          type: 'single',
+          message: current,
+          originalIndex: index,
+          previousUserMessage: lastUserMessage,
+          key: current.id,
+        });
+        lastUserMessage = current;
+        index += 1;
+        continue;
+      }
+
+      if (current.sender === 'ai' && current.responseGroupId) {
+        const groupId = current.responseGroupId;
+        const groupMessages = [];
+        const startIndex = index;
+
+        while (index < nonTypingMessages.length) {
+          const candidate = nonTypingMessages[index];
+          if (candidate.sender === 'ai' && candidate.responseGroupId === groupId) {
+            groupMessages.push(candidate);
+            index += 1;
+          } else {
+            break;
+          }
+        }
+
+        if (groupMessages.length > 1) {
+          items.push({
+            type: 'group',
+            messages: groupMessages,
+            previousUserMessage: lastUserMessage,
+            key: `group-${groupId || groupMessages[0].id}`,
+          });
+          continue;
+        }
+
+        const singleMessage = groupMessages[0];
+        items.push({
+          type: 'single',
+          message: singleMessage,
+          originalIndex: startIndex,
+          previousUserMessage: lastUserMessage,
+          key: singleMessage.id,
+        });
+        continue;
+      }
+
+      items.push({
         type: 'single',
         message: current,
         originalIndex: index,
         previousUserMessage: lastUserMessage,
         key: current.id,
       });
-      lastUserMessage = current;
+
       index += 1;
-      continue;
     }
 
-    if (current.sender === 'ai' && current.responseGroupId) {
-      const groupId = current.responseGroupId;
-      const groupMessages = [];
-      const startIndex = index;
-
-      while (index < nonTypingMessages.length) {
-        const candidate = nonTypingMessages[index];
-        if (candidate.sender === 'ai' && candidate.responseGroupId === groupId) {
-          groupMessages.push(candidate);
-          index += 1;
-        } else {
-          break;
-        }
-      }
-
-      if (groupMessages.length > 1) {
-        renderItems.push({
-          type: 'group',
-          messages: groupMessages,
-          previousUserMessage: lastUserMessage,
-          key: `group-${groupId || groupMessages[0].id}`,
-        });
-        continue;
-      }
-
-      const singleMessage = groupMessages[0];
-      renderItems.push({
-        type: 'single',
-        message: singleMessage,
-        originalIndex: startIndex,
-        previousUserMessage: lastUserMessage,
-        key: singleMessage.id,
-      });
-      continue;
-    }
-
-    renderItems.push({
-      type: 'single',
-      message: current,
-      originalIndex: index,
-      previousUserMessage: lastUserMessage,
-      key: current.id,
-    });
-
-    index += 1;
-  }
+    return items;
+  }, [nonTypingMessages]);
 
   const MultiModelResponseGroup = ({ responses, onRetry }) => {
     const count = responses.length;
@@ -472,57 +543,135 @@ function ChatWindow() {
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto min-h-0 p-4"
       >
-        <div className="max-w-3xl mx-auto">
-          <AnimatePresence initial={false}>
-            {renderItems.map((item) => {
-              if (item.type === 'group') {
-                const retryHandler = item.previousUserMessage && activeConversation
-                  ? () => sendMessage(item.previousUserMessage.content)
-                  : undefined;
+        <div className={`mx-auto w-full ${multiModeActive ? 'max-w-6xl' : 'max-w-3xl'}`}>
+          {multiModeActive ? (
+            <div className={`grid grid-cols-1 gap-6 ${columnGridClass}`}>
+              {participatingModels.map((modelEntry) => {
+                const columnEntries = messagesByModel[modelEntry.id] || [];
+                let lastUserMessage = null;
+                const modelTyping = conversationMessages.some(
+                  (msg) => msg.isTyping && msg.modelId === modelEntry.id
+                );
 
                 return (
-                  <MultiModelResponseGroup
-                    key={item.key}
-                    responses={item.messages}
-                    onRetry={retryHandler}
-                  />
+                  <div
+                    key={modelEntry.id}
+                    className="flex flex-col rounded-3xl border border-border/40 bg-surface/30 backdrop-blur-sm min-h-[240px]"
+                  >
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 bg-surface/60">
+                      <img
+                        src={modelEntry.avatar}
+                        alt={modelEntry.name}
+                        className="w-9 h-9 rounded-full object-cover"
+                        onError={(e) => {
+                          const seed = encodeURIComponent(modelEntry.apiModel || modelEntry.name || 'aimessenger');
+                          e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
+                        }}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-text truncate">{modelEntry.name}</p>
+                        <p className="text-[11px] text-text-secondary/80 truncate">
+                          {modelEntry.provider || 'Custom model'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex-1 p-4 space-y-4">
+                      {columnEntries.length === 0 ? (
+                        <p className="text-sm text-text-secondary/70">
+                          No messages yet for this model.
+                        </p>
+                      ) : (
+                        columnEntries.map(({ message }) => {
+                          if (message.sender === 'user') {
+                            lastUserMessage = message;
+                            return (
+                              <Message
+                                key={`${message.id}-${modelEntry.id}-user`}
+                                message={message}
+                              />
+                            );
+                          }
+
+                          const previousUserMessage = lastUserMessage;
+                          const handleRetry = previousUserMessage
+                            ? () => sendMessage(previousUserMessage.content)
+                            : undefined;
+
+                          return (
+                            <Message
+                              key={`${message.id}-${modelEntry.id}`}
+                              message={message}
+                              model={modelEntry}
+                              onRetry={handleRetry}
+                            />
+                          );
+                        })
+                      )}
+
+                      {modelTyping && (
+                        <div className="pt-2">
+                          <TypingIndicator model={modelEntry} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 );
-              }
+              })}
+            </div>
+          ) : (
+            <>
+              <AnimatePresence initial={false}>
+                {renderItems.map((item) => {
+                  if (item.type === 'group') {
+                    const retryHandler = item.previousUserMessage && activeConversation
+                      ? () => sendMessage(item.previousUserMessage.content)
+                      : undefined;
 
-              const msg = item.message;
-              const previousUserMessage = item.previousUserMessage;
-              const handleRetry = previousUserMessage && msg.sender === 'ai'
-                ? () => sendMessage(previousUserMessage.content)
-                : undefined;
+                    return (
+                      <MultiModelResponseGroup
+                        key={item.key}
+                        responses={item.messages}
+                        onRetry={retryHandler}
+                      />
+                    );
+                  }
 
-              const previousMessage = item.originalIndex > 0 ? nonTypingMessages[item.originalIndex - 1] : null;
-              const showModelLabel =
-                msg.sender === 'ai' && (
-                  selectedExtraModelIds.length > 0 ||
-                  (previousMessage && previousMessage.sender === 'ai')
-                );
+                  const msg = item.message;
+                  const previousUserMessage = item.previousUserMessage;
+                  const handleRetry = previousUserMessage && msg.sender === 'ai'
+                    ? () => sendMessage(previousUserMessage.content)
+                    : undefined;
 
-              const messageModel =
-                msg.sender === 'ai'
-                  ? modelsById[msg.modelId] || activeModel
-                  : null;
+                  const previousMessage = item.originalIndex > 0 ? nonTypingMessages[item.originalIndex - 1] : null;
+                  const showModelLabel =
+                    msg.sender === 'ai' && (
+                      selectedExtraModelIds.length > 0 ||
+                      (previousMessage && previousMessage.sender === 'ai')
+                    );
 
-              return (
-                <Message 
-                  key={item.key} 
-                  message={msg} 
-                  model={messageModel}
-                  onRetry={handleRetry}
-                  showModelLabel={showModelLabel}
-                />
-              );
-            })}
-          </AnimatePresence>
-          
-          {conversationMessages.some(msg => msg.isTyping) && activeModel && (
-            <TypingIndicator model={activeModel} />
+                  const messageModel =
+                    msg.sender === 'ai'
+                      ? modelsById[msg.modelId] || activeModel
+                      : null;
+
+                  return (
+                    <Message 
+                      key={item.key} 
+                      message={msg} 
+                      model={messageModel}
+                      onRetry={handleRetry}
+                      showModelLabel={showModelLabel}
+                    />
+                  );
+                })}
+              </AnimatePresence>
+
+              {conversationMessages.some(msg => msg.isTyping) && activeModel && (
+                <TypingIndicator model={activeModel} />
+              )}
+            </>
           )}
-          
+
           <div ref={messagesEndRef} />
         </div>
       </div>

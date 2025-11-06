@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -550,4 +550,57 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
   );
 }
 
-export default Message;
+const messagePropsAreEqual = (prev, next) => {
+  if (prev.showModelLabel !== next.showModelLabel) return false;
+  if (prev.isGrouped !== next.isGrouped) return false;
+
+  const prevModelId = prev.model?.id || null;
+  const nextModelId = next.model?.id || null;
+  if (prevModelId !== nextModelId) return false;
+
+  const prevMessage = prev.message;
+  const nextMessage = next.message;
+
+  if (prevMessage === nextMessage) {
+    return true;
+  }
+
+  if (!prevMessage || !nextMessage) {
+    return false;
+  }
+
+  const keysToCompare = [
+    'id',
+    'content',
+    'sender',
+    'timestamp',
+    'type',
+    'modelId',
+    'responseGroupId',
+    'isTyping',
+    'isGeneratingImage',
+    'searchQuery',
+  ];
+
+  for (const key of keysToCompare) {
+    if (prevMessage[key] !== nextMessage[key]) {
+      return false;
+    }
+  }
+
+  const prevResults = prevMessage.searchResults;
+  const nextResults = nextMessage.searchResults;
+
+  if (Array.isArray(prevResults) || Array.isArray(nextResults)) {
+    if (!Array.isArray(prevResults) || !Array.isArray(nextResults)) {
+      return false;
+    }
+    if (prevResults.length !== nextResults.length) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+export default memo(Message, messagePropsAreEqual);
