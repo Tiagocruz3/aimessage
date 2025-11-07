@@ -163,18 +163,7 @@ function ChatWindow() {
       handleSend();
     }
   };
-
-  if (!activeConversation || !activeModel) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <Bot className="w-16 h-16 mx-auto mb-4 text-primary opacity-50" />
-          <h3 className="text-xl font-semibold mb-2">Welcome to AI Messenger</h3>
-          <p className="text-text-secondary">Select an AI model to start chatting</p>
-        </div>
-      </div>
-    );
-  }
+  /* Early return moved below to keep hooks order consistent across renders */
 
   const selectedExtraModelIds = activeConversation.extraModelIds || [];
   const extraModels = selectedExtraModelIds
@@ -256,6 +245,18 @@ function ChatWindow() {
     if (count === 2) return 'md:grid-cols-2';
     return 'md:grid-cols-1';
   }, [participatingModels]);
+
+  if (!activeConversation || !activeModel) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <Bot className="w-16 h-16 mx-auto mb-4 text-primary opacity-50" />
+          <h3 className="text-xl font-semibold mb-2">Welcome to AI Messenger</h3>
+          <p className="text-text-secondary">Select an AI model to start chatting</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleToggleExtraModel = (modelId) => {
     if (!activeConversation) return;
