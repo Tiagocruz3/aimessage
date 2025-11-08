@@ -347,7 +347,8 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
             {isUser ? (
               <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
             ) : (
-              <div className="prose prose-invert prose-sm max-w-none">
+              <div className="message-content">
+                <div className="prose prose-invert prose-sm max-w-full break-words">
                 {isSearchResults ? (
                   <SearchResultsView
                     summary={content}
@@ -445,7 +446,7 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
                       if (hasImage) {
                         return <>{children}</>;
                       }
-                      return <p className="message-text" {...props}>{children}</p>;
+                      return <p className="message-text break-words" {...props}>{children}</p>;
                     },
                     h1({ children }) {
                       return <h1 className="message-heading message-heading-1">{children}</h1>;
@@ -490,6 +491,7 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
                     {content}
                   </ReactMarkdown>
                 )}
+                </div>
               </div>
             )}
 

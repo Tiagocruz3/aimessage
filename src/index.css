@@ -68,6 +68,23 @@
   .prose {
     @apply text-text;
   }
+  /* Ensure markdown content doesn't overflow its column */
+  .message-content {
+    @apply w-full min-w-0 overflow-hidden;
+  }
+  .message-content .prose * {
+    max-width: 100%;
+  }
+  .message-content .prose pre,
+  .message-content .prose code {
+    max-width: 100%;
+  }
+  .message-content .prose table {
+    width: 100%;
+  }
+  .message-content .prose img {
+    height: auto;
+  }
 
   /* Message text styles */
   .message-text {
