@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store/useStore';
-import { Send, Plus, Sliders, RotateCcw, MoreVertical, Bot, ChevronDown, ArrowUp, User, MessageSquare, UserPlus, Check } from 'lucide-react';
+import { Send, Plus, Sliders, RotateCcw, MoreVertical, Bot, ChevronDown, ArrowUp, User, MessageSquare, UserPlus, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Message from './Message';
 import TypingIndicator from './TypingIndicator';
@@ -204,6 +204,12 @@ function ChatWindow() {
       return (a.name || '').localeCompare(b.name || '');
     });
   }, [aiModels]);
+
+  // Use the same prioritized order for the multi-model selector, excluding the active model
+  const availableMultiModelsUI = useMemo(() => {
+    const excludeId = activeModel?.id;
+    return sortedModels.filter(m => m.id !== excludeId);
+  }, [sortedModels, activeModel]);
 
   const participatingModels = useMemo(() => {
     const base = activeModel ? [activeModel, ...extraModels] : [];
@@ -468,9 +474,9 @@ function ChatWindow() {
                         exit={{ opacity: 0, y: -10 }}
                         className="absolute right-0 top-full mt-2 w-64 bg-surface rounded-xl border border-border shadow-xl overflow-hidden z-50"
                       >
-                        <div className="p-2">
+                        <div className="p-2 max-h-80 overflow-y-auto overscroll-contain">
                           <p className="text-xs text-text-secondary px-3 py-2">Multi-chat models</p>
-                          {availableMultiModels.map(modelOption => {
+                          {availableMultiModelsUI.map(modelOption => {
                             const isSelected = selectedExtraModelIds.includes(modelOption.id);
                             const disabled = !isSelected && !canAddMoreModels;
                             return (
@@ -571,7 +577,7 @@ function ChatWindow() {
             <div className={`mx-auto w-full ${multiModeActive ? 'max-w-6xl' : 'max-w-3xl'}`}>
               {multiModeActive ? (
                 <div className={`grid grid-cols-1 gap-6 ${columnGridClass}`}>
-                  {participatingModels.map((modelEntry) => {
+              {participatingModels.map((modelEntry) => {
                     const columnEntries = messagesByModel[modelEntry.id] || [];
                     let lastUserMessage = null;
                     const modelTyping = conversationMessages.some(
@@ -581,26 +587,38 @@ function ChatWindow() {
                     return (
                       <div
                         key={modelEntry.id}
-                        className="flex flex-col rounded-3xl border border-border/40 bg-surface/30 backdrop-blur-sm min-h-[240px]"
+                    className="flex flex-col rounded-3xl border border-border/40 bg-surface/30 backdrop-blur-sm min-h-[240px] min-w-0"
                       >
-                        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 bg-surface/60">
-                          <img
-                            src={modelEntry.avatar}
-                            alt={modelEntry.name}
-                            className="w-9 h-9 rounded-full object-cover"
-                            onError={(e) => {
-                              const seed = encodeURIComponent(modelEntry.apiModel || modelEntry.name || 'aimessenger');
-                              e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
-                            }}
-                          />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-text truncate">{modelEntry.name}</p>
-                            <p className="text-[11px] text-text-secondary/80 truncate">
-                              {modelEntry.provider || 'Custom model'}
-                            </p>
-                          </div>
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 bg-surface/60">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={modelEntry.avatar}
+                          alt={modelEntry.name}
+                          className="w-9 h-9 rounded-full object-cover"
+                          onError={(e) => {
+                            const seed = encodeURIComponent(modelEntry.apiModel || modelEntry.name || 'aimessenger');
+                            e.currentTarget.src = `https://robohash.org/${seed}.png?size=200x200&set=set1`;
+                          }}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-text truncate">{modelEntry.name}</p>
+                          <p className="text-[11px] text-text-secondary/80 truncate">
+                            {modelEntry.provider || 'Custom model'}
+                          </p>
                         </div>
-                        <div className="flex-1 p-4 space-y-4">
+                      </div>
+                      {selectedExtraModelIds.includes(modelEntry.id) && (
+                        <button
+                          type="button"
+                          onClick={() => removeExtraModelFromConversation(activeConversation.id, modelEntry.id)}
+                          className="ml-auto p-1.5 rounded-lg hover:bg-surface-light text-text-secondary hover:text-text transition-colors"
+                          title="Remove from multi-chat"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                        </div>
+                    <div className="flex-1 p-4 space-y-4 min-w-0">
                           {columnEntries.length === 0 ? (
                             <p className="text-sm text-text-secondary/70">
                               No messages yet for this model.

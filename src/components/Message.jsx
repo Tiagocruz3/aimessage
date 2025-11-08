@@ -302,13 +302,13 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
   };
 
   const outerClassName = `flex ${isUser ? 'justify-end' : 'justify-start'} ${isGrouped ? 'mb-0 h-full' : 'mb-4'}`;
-  const innerWrapperClass = `flex gap-3 w-full ${isUser ? 'flex-row-reverse' : ''} ${isGrouped ? 'h-full' : ''}`;
-  const contentWrapperClass = `${isGrouped ? 'flex-1 flex ' : 'flex-1'} ${isUser ? 'justify-end' : ''} ${isGrouped ? 'h-full' : ''}`;
+  const innerWrapperClass = `flex gap-3 w-full min-w-0 ${isUser ? 'flex-row-reverse' : ''} ${isGrouped ? 'h-full' : ''}`;
+  const contentWrapperClass = `${isGrouped ? 'flex-1 flex ' : 'flex-1'} ${isUser ? 'justify-end' : ''} ${isGrouped ? 'h-full' : ''} min-w-0`;
   const widthClass = isGrouped
-    ? 'w-full max-w-none h-full flex flex-col'
+    ? 'w-full max-w-none h-full flex flex-col min-w-0'
     : isUser
-      ? 'max-w-[80%]'
-      : 'max-w-[85%]';
+      ? 'max-w-[80%] min-w-0'
+      : 'max-w-[85%] min-w-0';
   const bubbleClass = `${
     isUser 
       ? 'bg-primary text-white px-4 py-3 shadow-sm' 
