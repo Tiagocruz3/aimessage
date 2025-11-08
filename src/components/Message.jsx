@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check, Download, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import TabbedCodeBlock from './TabbedCodeBlock';
 
 const SearchResultsView = ({ summary, results = [], query }) => {
   return (
@@ -183,10 +184,31 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
   }
 
   const isUser = message.sender === 'user';
-  const content = message.content || '';
+  const originalContent = message.content || '';
   const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
   const isSearchResults = message.type === 'search_results' && Array.isArray(message.searchResults);
   const isImageSearchResults = message.type === 'image_search_results' && Array.isArray(message.searchResults);
+
+  // Extract html/css/js fenced blocks to render as a tabbed code view
+  const extractBlocks = (text) => {
+    if (typeof text !== 'string' || text.indexOf('```') === -1) {
+      return { rest: text, blocks: [] };
+    }
+    const regex = /```(\w+)\s*\n([\s\S]*?)```/gi;
+    const blocks = [];
+    let rest = text;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      const lang = (match[1] || '').toLowerCase();
+      if (['html', 'css', 'js', 'javascript'].includes(lang)) {
+        blocks.push({ language: lang, code: match[2] || '' });
+        // remove this block from rest content
+        rest = rest.replace(match[0], '').trim();
+      }
+    }
+    return { rest, blocks };
+  };
+  const { rest: content, blocks: codeBlocks } = extractBlocks(originalContent);
 
   // Safe timestamp formatting
   let timeAgo = 'just now';
@@ -361,7 +383,16 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
                     results={message.searchResults}
                     query={message.searchQuery}
                   />
-                ) : (
+                  ) : codeBlocks.length > 0 ? (
+                    <>
+                      <TabbedCodeBlock blocks={codeBlocks} />
+                      {content && (
+                        <div className="mt-4">
+                          <ReactMarkdown>{content}</ReactMarkdown>
+                        </div>
+                      )}
+                    </>
+                  ) : (
                   <ReactMarkdown
                     components={{
                     // Custom code block rendering - as a card
