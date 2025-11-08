@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check, Download, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import TabbedCodeBlock from './TabbedCodeBlock';
+import { useStore } from '../store/useStore';
 
 const SearchResultsView = ({ summary, results = [], query }) => {
   return (
@@ -188,6 +189,10 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
   const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
   const isSearchResults = message.type === 'search_results' && Array.isArray(message.searchResults);
   const isImageSearchResults = message.type === 'image_search_results' && Array.isArray(message.searchResults);
+  const { userProfile } = useStore();
+  const userAvatarUrl = userProfile?.avatarUrl || '';
+  const userInitials = (userProfile?.name || 'You')
+    .split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'Y';
 
   // Extract html/css/js fenced blocks to render as a tabbed code view
   const extractBlocks = (text) => {
@@ -345,15 +350,32 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
       className={outerClassName}
     >
       <div className={innerWrapperClass}>
-        {!isUser && model && (
-          <img
-            src={model.avatar}
-            alt={model.name || 'AI'}
-            className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-            onError={(e) => {
-              e.target.src = 'https://images.pexels.com/photos/8566472/pexels-photo-8566472.jpeg?w=400';
-            }}
-          />
+        {isUser ? (
+          userAvatarUrl ? (
+            <img
+              src={userAvatarUrl}
+              alt={userProfile?.name || 'You'}
+              className="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-primary/20"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/40 text-[11px] font-bold text-primary flex items-center justify-center flex-shrink-0">
+              {userInitials}
+            </div>
+          )
+        ) : (
+          model && (
+            <img
+              src={model.avatar}
+              alt={model.name || 'AI'}
+              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+              onError={(e) => {
+                e.target.src = 'https://images.pexels.com/photos/8566472/pexels-photo-8566472.jpeg?w=400';
+              }}
+            />
+          )
         )}
         
         <div className={contentWrapperClass}>

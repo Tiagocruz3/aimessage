@@ -117,6 +117,13 @@ export const useStore = create((set, get) => ({
   activeConversationId: null,
   messages: {},
   apiSettings: { ...initialApiSettings },
+  userProfile: {
+    name: 'You',
+    avatarUrl: '',
+    email: '',
+    hobbies: ['chatting with AIs'],
+    bio: 'Curious human exploring AI conversations.',
+  },
   openRouterModels: [],
   isLoadingModels: false,
   modelsError: null,
@@ -137,6 +144,11 @@ export const useStore = create((set, get) => ({
   },
   
   // Actions
+  updateUserProfile: (updates) => {
+    set(state => ({
+      userProfile: { ...state.userProfile, ...(updates || {}) }
+    }));
+  },
   initializeAIModels: () => {
     const models = aiModels.map(model => ({
       ...model,
@@ -330,7 +342,7 @@ export const useStore = create((set, get) => ({
   },
 
   sendMessage: async (content) => {
-    const { activeConversationId, conversations, messages, apiSettings } = get();
+    const { activeConversationId, conversations, messages, apiSettings, userProfile } = get();
     if (!activeConversationId || !content.trim()) return;
     
     const conversation = conversations.find(c => c.id === activeConversationId);
@@ -347,6 +359,8 @@ export const useStore = create((set, get) => ({
       candidate && array.findIndex(other => other.id === candidate.id) === index
     );
     
+    const userProfileContext = formatUserProfileAsSystemContext(userProfile);
+
     const runSearchFlow = async (query) => {
       const trimmedQuery = query.trim();
       if (!trimmedQuery) {
@@ -401,7 +415,8 @@ export const useStore = create((set, get) => ({
           trimmedQuery,
           contextLines,
           model,
-          apiSettings.openrouterApiKey
+          apiSettings.openrouterApiKey,
+          userProfileContext
         );
 
         const summary = shortenSummary(answer) || 'No summary available.';
@@ -919,23 +934,23 @@ export const useStore = create((set, get) => ({
           if (!apiSettings.openrouterApiKey) {
             throw new Error('OpenRouter API key not configured');
           }
-          response = await callOpenRouter(content, targetModel, apiSettings.openrouterApiKey);
+          response = await callOpenRouter(content, targetModel, apiSettings.openrouterApiKey, userProfileContext);
         } else if (effectiveProvider === 'n8n') {
           if (!apiSettings.n8nWebhookUrl) {
             throw new Error('n8n webhook URL not configured');
           }
-          response = await callN8nWebhook(content, targetModel, apiSettings.n8nWebhookUrl);
+          response = await callN8nWebhook(content, targetModel, apiSettings.n8nWebhookUrl, userProfile);
         } else if (effectiveProvider === 'lmstudio') {
           if (!apiSettings.lmstudioUrl) {
             throw new Error('LM Studio URL not configured');
           }
-          response = await callLMStudio(content, targetModel, apiSettings.lmstudioUrl);
+          response = await callLMStudio(content, targetModel, apiSettings.lmstudioUrl, userProfileContext);
         } else if (apiSettings.provider === 'openrouter' && apiSettings.openrouterApiKey) {
-          response = await callOpenRouter(content, targetModel, apiSettings.openrouterApiKey);
+          response = await callOpenRouter(content, targetModel, apiSettings.openrouterApiKey, userProfileContext);
         } else if (apiSettings.provider === 'n8n' && apiSettings.n8nWebhookUrl) {
-          response = await callN8nWebhook(content, targetModel, apiSettings.n8nWebhookUrl);
+          response = await callN8nWebhook(content, targetModel, apiSettings.n8nWebhookUrl, userProfile);
         } else if (apiSettings.provider === 'lmstudio' && apiSettings.lmstudioUrl) {
-          response = await callLMStudio(content, targetModel, apiSettings.lmstudioUrl);
+          response = await callLMStudio(content, targetModel, apiSettings.lmstudioUrl, userProfileContext);
         } else {
           response = generateMockResponse(content, targetModel);
         }
@@ -1194,7 +1209,7 @@ export const useStore = create((set, get) => ({
 }));
 
 // API Helper Functions
-async function callOpenRouter(message, model, apiKey) {
+async function callOpenRouter(message, model, apiKey, userProfileContext) {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -1207,6 +1222,7 @@ async function callOpenRouter(message, model, apiKey) {
       model: model.apiModel || 'openai/gpt-3.5-turbo',
       messages: [
         { role: 'system', content: model.systemPrompt || model.personality },
+        ...(userProfileContext ? [{ role: 'system', content: userProfileContext }] : []),
         { role: 'user', content: message }
       ],
     }),
@@ -1216,7 +1232,7 @@ async function callOpenRouter(message, model, apiKey) {
   return data.choices[0].message.content;
 }
 
-async function callOpenRouterWithContext(message, context, model, apiKey) {
+async function callOpenRouterWithContext(message, context, model, apiKey, userProfileContext) {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -1229,6 +1245,7 @@ async function callOpenRouterWithContext(message, context, model, apiKey) {
       model: model.apiModel || 'openai/gpt-3.5-turbo',
       messages: [
         { role: 'system', content: (model.systemPrompt || model.personality || 'You are a helpful assistant.') + '\nUse the provided search results as evidence. Cite sources at the end.' },
+        ...(userProfileContext ? [{ role: 'system', content: userProfileContext }] : []),
         { role: 'system', content: `Search Results Context (may be incomplete):\n\n${context}` },
         { role: 'user', content: message }
       ],
@@ -1321,7 +1338,7 @@ async function fetchSearxResults(query, searchUrl, options = {}) {
   }
 }
 
-async function callN8nWebhook(message, model, webhookUrl) {
+async function callN8nWebhook(message, model, webhookUrl, userProfile) {
   const response = await fetch(webhookUrl, {
     method: 'POST',
     headers: {
@@ -1331,6 +1348,7 @@ async function callN8nWebhook(message, model, webhookUrl) {
       message,
       model: model.name,
       personality: model.personality,
+      userProfile,
     }),
   });
   
@@ -1338,7 +1356,7 @@ async function callN8nWebhook(message, model, webhookUrl) {
   return data.response || data.message || 'No response from webhook';
 }
 
-async function callLMStudio(message, model, baseUrl) {
+async function callLMStudio(message, model, baseUrl, userProfileContext) {
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -1347,6 +1365,7 @@ async function callLMStudio(message, model, baseUrl) {
     body: JSON.stringify({
       messages: [
         { role: 'system', content: model.systemPrompt || model.personality },
+        ...(userProfileContext ? [{ role: 'system', content: userProfileContext }] : []),
         { role: 'user', content: message }
       ],
       temperature: 0.7,
@@ -1367,6 +1386,23 @@ function generateMockResponse(message, model) {
   ];
   
   return responses[Math.floor(Math.random() * responses.length)];
+}
+
+function formatUserProfileAsSystemContext(profile) {
+  if (!profile || typeof profile !== 'object') return '';
+  const name = profile.name || 'User';
+  const email = profile.email || '';
+  const hobbies = Array.isArray(profile.hobbies) ? profile.hobbies.filter(Boolean).join(', ') : '';
+  const bio = profile.bio || '';
+  const lines = [
+    `User Profile Context:`,
+    `- Name: ${name}`,
+    email ? `- Email: ${email}` : null,
+    hobbies ? `- Hobbies: ${hobbies}` : null,
+    bio ? `- Bio: ${bio}` : null,
+    `Use the user's name when addressing them naturally.`
+  ].filter(Boolean);
+  return lines.join('\n');
 }
 
 // Image Generation Function
