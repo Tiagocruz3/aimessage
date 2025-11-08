@@ -29,7 +29,10 @@ function ChatWindow() {
     aiModels, 
     sendMessage,
     addExtraModelToConversation,
-    removeExtraModelFromConversation
+    removeExtraModelFromConversation,
+    fetchOpenRouterModels,
+    openRouterModels,
+    apiSettings,
   } = useStore();
 
   const activeConversation = conversations.find(c => c.id === activeConversationId);
@@ -183,6 +186,22 @@ function ChatWindow() {
       if (aSelected === bSelected) return a.name.localeCompare(b.name);
       return aSelected ? -1 : 1;
     });
+
+  // Sorted list for prompt model selector: n8n (webhook) first, then lmstudio, then openrouter, then others; then by name
+  const sortedModels = useMemo(() => {
+    const priority = (provider) => {
+      if ((provider || '').toLowerCase() === 'n8n') return 0; // webhook models first
+      if ((provider || '').toLowerCase() === 'lmstudio') return 1;
+      if ((provider || '').toLowerCase() === 'openrouter') return 2;
+      return 3;
+    };
+    return [...aiModels].sort((a, b) => {
+      const pa = priority(a.provider);
+      const pb = priority(b.provider);
+      if (pa !== pb) return pa - pb;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [aiModels]);
 
   const participatingModels = useMemo(() => {
     const base = activeModel ? [activeModel, ...extraModels] : [];
@@ -712,7 +731,16 @@ function ChatWindow() {
                   {/* Model Selector */}
                   <div className="relative" ref={dropdownRef}>
                     <button
-                      onClick={() => setShowModelDropdown(!showModelDropdown)}
+                  onClick={() => {
+                    const willOpen = !showModelDropdown;
+                    setShowModelDropdown(willOpen);
+                    if (willOpen) {
+                      // Preload OpenRouter models if configured and not yet loaded
+                      if (apiSettings?.openrouterApiKey && (!openRouterModels || openRouterModels.length === 0)) {
+                        fetchOpenRouterModels();
+                      }
+                    }
+                  }}
                       className="flex items-center gap-2 px-3 py-1.5 hover:bg-surface rounded-full transition-colors text-sm"
                     >
                       <span className="text-text-secondary">{activeModel.name}</span>
@@ -722,15 +750,15 @@ function ChatWindow() {
                     {/* Model Dropdown */}
                     <AnimatePresence>
                       {showModelDropdown && (
-                        <motion.div
+                    <motion.div
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
                           className="absolute bottom-full right-0 mb-2 w-64 bg-surface rounded-xl border border-border shadow-xl overflow-hidden"
                         >
-                          <div className="p-2">
+                      <div className="p-2 max-h-80 overflow-y-auto overscroll-contain">
                             <p className="text-xs text-text-secondary px-3 py-2">Available Models</p>
-                            {aiModels.map((model) => (
+                        {sortedModels.map((model) => (
                               <button
                                 key={model.id}
                                 onClick={() => {
