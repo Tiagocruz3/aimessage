@@ -1350,8 +1350,16 @@ async function callOpenRouter(message, model, apiKey, userProfileContext, histor
     }),
   });
   
-  const data = await response.json();
-  return data.choices[0].message.content;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errMessage = data.error?.message || data.message || `OpenRouter request failed (HTTP ${response.status})`;
+    throw new Error(errMessage);
+  }
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('OpenRouter returned an empty response for this request. Try a different model or reduce input size.');
+  }
+  return content;
 }
 
 async function callOpenRouterWithContext(message, context, model, apiKey, userProfileContext) {
