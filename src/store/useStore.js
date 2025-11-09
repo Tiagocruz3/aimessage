@@ -1579,14 +1579,40 @@ async function callOpenRouterVision(imageDataUrl, modelId, apiKey) {
   return content;
 }
 
+async function loadPdfJsFromCdn() {
+  if (typeof window === 'undefined') {
+    throw new Error('PDF parsing is only available in the browser');
+  }
+  if (window.pdfjsLib) {
+    // Ensure worker set
+    try {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    } catch (_) {}
+    return window.pdfjsLib;
+  }
+  await new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Failed to load pdf.js from CDN'));
+    document.head.appendChild(script);
+  });
+  if (!window.pdfjsLib) {
+    throw new Error('pdf.js library not available after loading');
+  }
+  try {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  } catch (_) {}
+  return window.pdfjsLib;
+}
+
 async function extractTextFromPdf(file, maxPages = 10) {
-  // Lazy-load pdf.js from CDN worker to avoid bundling issues
-  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/build/pdf');
-  GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdfjsLib = await loadPdfJsFromCdn();
 
   const arrayBuffer = await new Response(file).arrayBuffer();
   const uint8 = new Uint8Array(arrayBuffer);
-  const pdf = await getDocument({ data: uint8 }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: uint8 }).promise;
   const total = Math.min(pdf.numPages, Math.max(1, maxPages));
   let fullText = '';
 
