@@ -362,6 +362,110 @@ export const useStore = create((set, get) => ({
     
     const userProfileContext = formatUserProfileAsSystemContext(userProfile);
 
+    // Video generation flow (Sora 2): only when a single active model supports video
+    if (targetModels.length === 1 && (targetModels[0].isVideo || targetModels[0].videoModel)) {
+      const videoModelId = targetModels[0].videoModel || 'sora-2';
+      const userMessage = {
+        id: uuidv4(),
+        content,
+        sender: 'user',
+        timestamp: new Date().toISOString(),
+      };
+      set(state => ({
+        messages: {
+          ...state.messages,
+          [activeConversationId]: [
+            ...(state.messages[activeConversationId] || []),
+            userMessage,
+          ],
+        },
+        conversations: state.conversations.map(conv =>
+          conv.id === activeConversationId
+            ? { ...conv, lastMessage: content, timestamp: userMessage.timestamp }
+            : conv
+        ),
+      }));
+      
+      const progressMsg = {
+        id: uuidv4(),
+        content: 'Starting video render...',
+        sender: 'ai',
+        modelId: model.id,
+        timestamp: new Date().toISOString(),
+        isTyping: true,
+        type: 'video_progress',
+      };
+      set(state => ({
+        messages: {
+          ...state.messages,
+          [activeConversationId]: [
+            ...(state.messages[activeConversationId] || []),
+            progressMsg,
+          ],
+        },
+      }));
+      
+      try {
+        const result = await createAndRetrieveOpenAIVideo(content, videoModelId, apiSettings.openaiApiKey, (progress) => {
+          // Update progress in-place
+          set(state => ({
+            messages: {
+              ...state.messages,
+              [activeConversationId]: state.messages[activeConversationId].map(msg =>
+                msg.id === progressMsg.id
+                  ? { ...msg, content: `Rendering video... ${Math.max(0, Math.min(100, Math.round(progress || 0)))}%` }
+                  : msg
+              ),
+            },
+          }));
+        });
+        
+        if (!result || result.status !== 'completed') {
+          throw new Error(`Video creation failed. Status: ${result?.status || 'unknown'}`);
+        }
+        
+        const blobUrl = await downloadOpenAIVideoUrl(result.id, apiSettings.openaiApiKey);
+        
+        set(state => ({
+          messages: {
+            ...state.messages,
+            [activeConversationId]: state.messages[activeConversationId].map(msg =>
+              msg.id === progressMsg.id
+                ? { 
+                    ...msg, 
+                    content: 'Video generated.',
+                    isTyping: false,
+                    type: 'video',
+                    videoUrl: blobUrl,
+                    videoId: result.id,
+                    seconds: result.seconds,
+                    size: result.size
+                  }
+                : msg
+            ),
+          },
+          conversations: state.conversations.map(conv =>
+            conv.id === activeConversationId
+              ? { ...conv, lastMessage: 'Generated a video', timestamp: new Date().toISOString() }
+              : conv
+          ),
+        }));
+      } catch (error) {
+        const friendly = error?.message || 'Video generation failed. Please verify your OpenAI API key or try again.';
+        set(state => ({
+          messages: {
+            ...state.messages,
+            [activeConversationId]: state.messages[activeConversationId].map(msg =>
+              msg.id === progressMsg.id
+                ? { ...msg, content: friendly, isTyping: false, type: undefined }
+                : msg
+            ),
+          },
+        }));
+      }
+      return;
+    }
+
     const runSearchFlow = async (query) => {
       const trimmedQuery = query.trim();
       if (!trimmedQuery) {
@@ -1514,6 +1618,74 @@ export const useStore = create((set, get) => ({
 }));
 
 // API Helper Functions
+async function createAndRetrieveOpenAIVideo(prompt, modelId, apiKey, onProgress) {
+  if (!apiKey) {
+    throw new Error('OpenAI API key not configured. Set it in Settings.');
+  }
+  // Start job
+  const createResponse = await fetch('https://api.openai.com/v1/videos', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: modelId || 'sora-2',
+      prompt: String(prompt || '').trim(),
+    }),
+  });
+  const created = await createResponse.json().catch(() => ({}));
+  if (!createResponse.ok) {
+    const msg = created?.error?.message || created?.message || `OpenAI video create failed (HTTP ${createResponse.status})`;
+    throw new Error(msg);
+  }
+  
+  let current = created;
+  // Poll until completed/failed
+  // Backoff: 2s initial, up to ~10s
+  let delay = 2000;
+  for (let i = 0; i < 120; i += 1) {
+    if (current?.status === 'completed' || current?.status === 'failed') {
+      break;
+    }
+    await new Promise(r => setTimeout(r, delay));
+    delay = Math.min(10000, Math.floor(delay * 1.2));
+    const retrieveResp = await fetch(`https://api.openai.com/v1/videos/${encodeURIComponent(current.id)}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    });
+    const data = await retrieveResp.json().catch(() => ({}));
+    if (retrieveResp.ok) {
+      current = data;
+      const progress = typeof current.progress === 'number' ? current.progress : null;
+      if (onProgress && progress !== null) {
+        try { onProgress(progress); } catch (_) {}
+      }
+    } else {
+      const msg = data?.error?.message || data?.message || `OpenAI video retrieve failed (HTTP ${retrieveResp.status})`;
+      throw new Error(msg);
+    }
+  }
+  return current;
+}
+
+async function downloadOpenAIVideoUrl(videoId, apiKey) {
+  const resp = await fetch(`https://api.openai.com/v1/videos/${encodeURIComponent(videoId)}/content`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+    },
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    const msg = err?.error?.message || `OpenAI video content failed (HTTP ${resp.status})`;
+    throw new Error(msg);
+  }
+  const blob = await resp.blob();
+  return URL.createObjectURL(blob);
+}
 async function callOpenRouter(message, model, apiKey, userProfileContext, history) {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',

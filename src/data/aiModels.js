@@ -104,4 +104,17 @@ export const aiModels = [
     lastMessage: 'Let\'s dive into your data!',
     provider: 'lmstudio',
   },
+  
+  // OpenAI Video (Sora)
+  {
+    name: 'Sora 2 Video',
+    avatar: 'https://images.pexels.com/photos/8546968/pexels-photo-8546968.jpeg?w=400',
+    personality: 'Create short videos from natural language prompts with audio.',
+    status: 'Ready to render video',
+    systemPrompt: 'You generate short high-quality videos based on concise prompts. Keep outputs visual.',
+    lastMessage: 'Describe a scene; I’ll turn it into a short video.',
+    provider: 'openai',
+    videoModel: 'sora-2',
+    isVideo: true
+  },
 ];

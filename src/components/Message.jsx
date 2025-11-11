@@ -189,6 +189,7 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
   const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
   const isSearchResults = message.type === 'search_results' && Array.isArray(message.searchResults);
   const isImageSearchResults = message.type === 'image_search_results' && Array.isArray(message.searchResults);
+  const isVideoMessage = message.type === 'video' && typeof message.videoUrl === 'string' && message.videoUrl.length > 0;
   const { userProfile } = useStore();
   const userAvatarUrl = userProfile?.avatarUrl || '';
   const userInitials = (userProfile?.name || 'You')
@@ -405,6 +406,20 @@ function Message({ message, model, onRetry, showModelLabel = false, isGrouped = 
                     results={message.searchResults}
                     query={message.searchQuery}
                   />
+                  ) : isVideoMessage ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-text-secondary">{content || 'Video generated'}</p>
+                      <div className="rounded-xl overflow-hidden border border-border/60 bg-black/50">
+                        <video
+                          src={message.videoUrl}
+                          controls
+                          className="w-full max-h-[60vh] bg-black"
+                        />
+                      </div>
+                      <div className="text-xs text-text-secondary/80">
+                        {message.seconds ? `${message.seconds}s` : ''} {message.size ? `• ${message.size}` : ''}
+                      </div>
+                    </div>
                   ) : codeBlocks.length > 0 ? (
                     <>
                       <TabbedCodeBlock blocks={codeBlocks} />
