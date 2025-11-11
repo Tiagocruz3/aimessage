@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import toast from 'react-hot-toast';
 import APIConnectionIndicator from './APIConnectionIndicator';
+import { getSupabase } from '../lib/supabaseClient';
 
 const tabs = [
   { id: 'api', name: 'API Settings', icon: Radio },
@@ -16,6 +17,8 @@ function Settings({ onBack }) {
   const { 
     apiSettings, 
     updateApiSettings, 
+    loadApiSettingsFromDb,
+    saveApiSettingsToDb,
     checkApiConnection,
     imageApiConnectionStatus,
     ocrApiConnectionStatus,
@@ -24,6 +27,30 @@ function Settings({ onBack }) {
   } = useStore();
   const [activeTab, setActiveTab] = useState('api');
   const [settings, setSettings] = useState(apiSettings);
+  const [userId, setUserId] = useState(null);
+
+  // Keep local form state in sync if store settings change (e.g., loaded from DB)
+  useEffect(() => {
+    setSettings(apiSettings);
+  }, [apiSettings]);
+
+  // On mount, fetch current user and load settings from DB
+  useEffect(() => {
+    let mounted = true;
+    const supabase = getSupabase();
+    if (!supabase) return;
+    const init = async () => {
+      const { data } = await supabase.auth.getSession();
+      const uid = data?.session?.user?.id || null;
+      if (!mounted) return;
+      setUserId(uid);
+      if (uid) {
+        await loadApiSettingsFromDb(uid);
+      }
+    };
+    init();
+    return () => { mounted = false; };
+  }, [loadApiSettingsFromDb]);
   
   // Check image and OCR API connections when on relevant tabs or when settings change
   useEffect(() => {
@@ -40,6 +67,10 @@ function Settings({ onBack }) {
 
   const handleSave = () => {
     updateApiSettings(settings);
+    if (userId) {
+      // Fire and forget save to DB
+      saveApiSettingsToDb(userId, settings);
+    }
     toast.success('Settings saved successfully!');
     // Check API connection after saving
     setTimeout(() => {

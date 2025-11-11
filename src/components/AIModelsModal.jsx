@@ -19,8 +19,17 @@ function AIModelsModal({ onClose }) {
     fetchOpenRouterModels, 
     isLoadingModels, 
     modelsError,
-    apiSettings 
+    apiSettings,
+    createUserModel
   } = useStore();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newModel, setNewModel] = useState({
+    name: '',
+    avatar: '',
+    systemPrompt: '',
+  });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -115,6 +124,86 @@ function AIModelsModal({ onClose }) {
 
           {/* Content */}
           <div className="p-6 overflow-y-auto max-h-[calc(80vh-200px)] overscroll-contain">
+            {/* Create Custom Model */}
+            <div className="mb-6">
+              <button
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-surface-light transition-colors"
+                onClick={() => setShowCreate(!showCreate)}
+              >
+                <Plus className="w-4 h-4" />
+                {showCreate ? 'Hide Custom Model Creator' : 'Create Custom Model'}
+              </button>
+            </div>
+            {showCreate && (
+              <div className="mb-8 p-4 border border-border rounded-xl bg-surface-light">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={newModel.name}
+                      onChange={(e) => setNewModel({ ...newModel, name: e.target.value })}
+                      placeholder="Assistant name"
+                      className="w-full px-4 py-2 bg-surface rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Avatar URL</label>
+                    <input
+                      type="url"
+                      value={newModel.avatar}
+                      onChange={(e) => setNewModel({ ...newModel, avatar: e.target.value })}
+                      placeholder="https://example.com/avatar.png"
+                      className="w-full px-4 py-2 bg-surface rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium mb-1">System Prompt</label>
+                    <textarea
+                      rows={4}
+                      value={newModel.systemPrompt}
+                      onChange={(e) => setNewModel({ ...newModel, systemPrompt: e.target.value })}
+                      placeholder="Describe how this AI should behave..."
+                      className="w-full px-4 py-2 bg-surface rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                    />
+                  </div>
+                </div>
+                {createError && <p className="text-sm text-red-400 mt-2">{createError}</p>}
+                <div className="mt-4 flex justify-end">
+                  <button
+                    disabled={creating}
+                    onClick={async () => {
+                      setCreateError('');
+                      const name = newModel.name.trim();
+                      if (!name) {
+                        setCreateError('Please provide a name.');
+                        return;
+                      }
+                      setCreating(true);
+                      try {
+                        const created = await createUserModel({
+                          name,
+                          avatar: newModel.avatar.trim(),
+                          systemPrompt: newModel.systemPrompt.trim(),
+                        });
+                        // Reset and jump to conversation with new model
+                        setNewModel({ name: '', avatar: '', systemPrompt: '' });
+                        setShowCreate(false);
+                        createConversation(created.id);
+                        onClose();
+                      } catch (err) {
+                        setCreateError(err?.message || 'Failed to create model');
+                      } finally {
+                        setCreating(false);
+                      }
+                    }}
+                    className="px-4 py-2 bg-primary text-black rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    {creating ? 'Creating...' : 'Create Model'}
+                  </button>
+                </div>
+              </div>
+            )}
             {/* Model Search */}
             <div className="mb-4">
               <input

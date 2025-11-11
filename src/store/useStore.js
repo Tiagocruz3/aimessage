@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { aiModels } from '../data/aiModels';
+import { getSupabase } from '../lib/supabaseClient';
 
 const env = import.meta.env || {};
 
@@ -987,12 +988,195 @@ export const useStore = create((set, get) => ({
     }));
   },
   
-  updateAIModel: (modelId, updates) => {
+  // Load API settings for the current user from Supabase
+  loadApiSettingsFromDb: async (userId) => {
+    try {
+      const supabase = getSupabase();
+      if (!supabase || !userId) return;
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('provider, openrouter_api_key, openai_api_key, n8n_webhook_url, lmstudio_url, search_url, image_generation_model, ocr_model')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) {
+        // If no row, ignore; otherwise log
+        if (error.code !== 'PGRST116') {
+          console.warn('Failed to load user settings from Supabase:', error.message || error);
+        }
+        return;
+      }
+      if (!data) return;
+      const loaded = {
+        provider: (data.provider || get().apiSettings.provider),
+        openrouterApiKey: data.openrouter_api_key || '',
+        openaiApiKey: data.openai_api_key || '',
+        n8nWebhookUrl: data.n8n_webhook_url || '',
+        lmstudioUrl: data.lmstudio_url || get().apiSettings.lmstudioUrl,
+        searchUrl: data.search_url || get().apiSettings.searchUrl,
+        imageGenerationModel: data.image_generation_model || get().apiSettings.imageGenerationModel,
+        ocrModel: data.ocr_model || get().apiSettings.ocrModel,
+      };
+      set({ apiSettings: loaded });
+    } catch (err) {
+      console.warn('Error loading API settings:', err?.message || err);
+    }
+  },
+  
+  // Save API settings for the current user to Supabase
+  saveApiSettingsToDb: async (userId, partialSettings) => {
+    try {
+      const supabase = getSupabase();
+      if (!supabase || !userId) return;
+      const current = { ...get().apiSettings, ...(partialSettings || {}) };
+      const payload = {
+        user_id: userId,
+        provider: current.provider || null,
+        openrouter_api_key: current.openrouterApiKey || null,
+        openai_api_key: current.openaiApiKey || null,
+        n8n_webhook_url: current.n8nWebhookUrl || null,
+        lmstudio_url: current.lmstudioUrl || null,
+        search_url: current.searchUrl || null,
+        image_generation_model: current.imageGenerationModel || null,
+        ocr_model: current.ocrModel || null,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert(payload, { onConflict: 'user_id' });
+      if (error) {
+        console.warn('Failed to save user settings to Supabase:', error.message || error);
+      }
+    } catch (err) {
+      console.warn('Error saving API settings:', err?.message || err);
+    }
+  },
+  
+  updateAIModel: async (modelId, updates) => {
+    // Update locally first
     set(state => ({
       aiModels: state.aiModels.map(model =>
         model.id === modelId ? { ...model, ...updates } : model
       ),
     }));
+    // If it's a user model, persist changes
+    try {
+      const state = get();
+      const model = (state.aiModels || []).find(m => m.id === modelId);
+      if (!model || !model.isUserModel) return;
+      const supabase = getSupabase();
+      if (!supabase) return;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      if (!userId) return;
+      const payload = {
+        user_id: userId,
+        client_model_id: model.id,
+        name: model.name || null,
+        avatar_url: model.avatar || null,
+        system_prompt: model.systemPrompt || model.personality || null,
+        provider: model.provider || null,
+        api_model: model.apiModel || null,
+        last_message: model.lastMessage || null,
+        status: model.status || null,
+        top_provider: model.topProvider || null,
+        is_user_model: true,
+        updated_at: new Date().toISOString(),
+      };
+      await supabase.from('user_models').upsert(payload, { onConflict: 'client_model_id' });
+    } catch (err) {
+      console.warn('Failed to persist user model update:', err?.message || err);
+    }
+  },
+  
+  // Load user's custom models from Supabase and merge with existing models
+  loadUserModelsFromDb: async (userId) => {
+    try {
+      const supabase = getSupabase();
+      if (!supabase || !userId) return;
+      const { data, error } = await supabase
+        .from('user_models')
+        .select('client_model_id, name, avatar_url, system_prompt, provider, api_model, last_message, status, top_provider')
+        .eq('user_id', userId);
+      if (error) {
+        console.warn('Failed to load user models:', error.message || error);
+        return;
+      }
+      const mapped = (data || []).map(row => ({
+        id: row.client_model_id, // preserve stable id across sessions
+        name: row.name || 'Custom Assistant',
+        avatar: row.avatar_url || `https://robohash.org/${encodeURIComponent(row.name || 'custom')}.png?size=200x200&set=set1`,
+        personality: row.system_prompt || 'Helpful custom assistant.',
+        status: row.status || 'Ready',
+        apiModel: row.api_model || undefined,
+        systemPrompt: row.system_prompt || undefined,
+        lastMessage: row.last_message || 'Let’s chat!',
+        provider: (row.provider || get().apiSettings.provider || 'openrouter').toLowerCase(),
+        isOnline: true,
+        lastSeen: new Date().toISOString(),
+        topProvider: row.top_provider || null,
+        isUserModel: true,
+      }));
+      // Merge without duplicating by id
+      const existing = get().aiModels || [];
+      const existingIds = new Set(existing.map(m => m.id));
+      const appended = mapped.filter(m => !existingIds.has(m.id));
+      if (appended.length > 0) {
+        set({ aiModels: [...existing, ...appended] });
+      }
+    } catch (err) {
+      console.warn('Error loading user models:', err?.message || err);
+    }
+  },
+  
+  // Create and persist a user custom model
+  createUserModel: async ({ name, avatar, systemPrompt, provider, apiModel }) => {
+    const supabase = getSupabase();
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      if (!userId) throw new Error('Not authenticated');
+      const clientId = uuidv4();
+      const nowIso = new Date().toISOString();
+      const resolvedProvider = (provider || get().apiSettings.provider || 'openrouter').toLowerCase();
+      const payload = {
+        user_id: userId,
+        client_model_id: clientId,
+        name: (name || '').trim() || 'Custom Assistant',
+        avatar_url: (avatar || '').trim() || null,
+        system_prompt: (systemPrompt || '').trim() || null,
+        provider: resolvedProvider,
+        api_model: (apiModel || '').trim() || null,
+        last_message: 'Ready to assist!',
+        status: 'Ready',
+        top_provider: null,
+        is_user_model: true,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+      const { error } = await supabase.from('user_models').upsert(payload, { onConflict: 'client_model_id' });
+      if (error) throw error;
+      const model = {
+        id: clientId,
+        name: payload.name,
+        avatar: payload.avatar_url || `https://robohash.org/${encodeURIComponent(payload.name)}.png?size=200x200&set=set1`,
+        personality: payload.system_prompt || 'Helpful custom assistant.',
+        status: payload.status,
+        apiModel: payload.api_model || undefined,
+        systemPrompt: payload.system_prompt || undefined,
+        lastMessage: payload.last_message,
+        provider: resolvedProvider,
+        isOnline: true,
+        lastSeen: nowIso,
+        topProvider: null,
+        isUserModel: true,
+      };
+      set(state => ({ aiModels: [model, ...state.aiModels] }));
+      return model;
+    } catch (err) {
+      console.warn('Failed to create user model:', err?.message || err);
+      throw err;
+    }
   },
   
   checkApiConnection: async () => {
