@@ -161,14 +161,35 @@ export const useStore = create((set, get) => ({
     set({ aiModels: models });
     
     // Create initial conversations
-    const conversations = models.slice(0, 5).map(model => ({
+    const conversations = [];
+    
+    // Always add pinned models (like Sora) first
+    const pinnedModels = models.filter(model => model.isPinned);
+    pinnedModels.forEach(model => {
+      conversations.push({
+        id: uuidv4(),
+        modelId: model.id,
+        lastMessage: model.lastMessage || 'Click to start chatting',
+        timestamp: new Date(Date.now() - Math.random() * 3600000).toISOString(),
+        unread: 0,
+        extraModelIds: [],
+        isPinned: true,
+      });
+    });
+    
+    // Add other initial conversations (non-pinned models)
+    const nonPinnedModels = models.filter(model => !model.isPinned);
+    const initialConversations = nonPinnedModels.slice(0, 4).map(model => ({
       id: uuidv4(),
       modelId: model.id,
       lastMessage: model.lastMessage || 'Click to start chatting',
       timestamp: new Date(Date.now() - Math.random() * 3600000).toISOString(),
       unread: Math.random() > 0.5 ? Math.floor(Math.random() * 5) : 0,
       extraModelIds: [],
+      isPinned: false,
     }));
+    
+    conversations.push(...initialConversations);
     
     set({ conversations });
   },
@@ -284,6 +305,7 @@ export const useStore = create((set, get) => ({
       timestamp: new Date().toISOString(),
       unread: 0,
       extraModelIds: [],
+      isPinned: model.isPinned || false, // Inherit pinned status from model
     };
     
     set(state => ({
@@ -294,6 +316,12 @@ export const useStore = create((set, get) => ({
   
   removeConversation: (conversationId) => {
     set(state => {
+      // Don't allow removing pinned conversations
+      const conversationToRemove = state.conversations.find(conv => conv.id === conversationId);
+      if (conversationToRemove?.isPinned) {
+        return {}; // No changes
+      }
+      
       const remainingConversations = state.conversations.filter(conv => conv.id !== conversationId);
       const { [conversationId]: _removedMessages, ...remainingMessages } = state.messages;
 

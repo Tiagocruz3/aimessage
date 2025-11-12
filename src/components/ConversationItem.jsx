@@ -2,9 +2,9 @@ import React from 'react';
 import { useStore } from '../store/useStore';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Pin } from 'lucide-react';
 
-function ConversationItem({ conversation, isActive, onRemove }) {
+function ConversationItem({ conversation, isActive, onRemove, isPinned = false }) {
   const { aiModels, setActiveConversation } = useStore();
   const model = aiModels.find(m => m.id === conversation.modelId);
 
@@ -37,7 +37,12 @@ function ConversationItem({ conversation, isActive, onRemove }) {
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="font-semibold truncate">{model.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold truncate">{model.name}</h3>
+              {isPinned && (
+                <Pin className="w-3 h-3 text-primary flex-shrink-0" title="Pinned conversation" />
+              )}
+            </div>
             <span className="text-xs text-text-secondary">
               {formatDistanceToNow(new Date(conversation.timestamp), { addSuffix: true })}
             </span>
@@ -54,7 +59,7 @@ function ConversationItem({ conversation, isActive, onRemove }) {
               {conversation.unread}
             </div>
           )}
-          {onRemove && (
+          {onRemove && !isPinned && (
             <button
               type="button"
               onClick={(event) => {

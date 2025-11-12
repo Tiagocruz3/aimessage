@@ -112,9 +112,10 @@ export const aiModels = [
     personality: 'Create short videos from natural language prompts with audio.',
     status: 'Ready to render video',
     systemPrompt: 'You generate short high-quality videos based on concise prompts. Keep outputs visual.',
-    lastMessage: 'Describe a scene; I’ll turn it into a short video.',
+    lastMessage: 'Describe a scene; I'll turn it into a short video.',
     provider: 'openai',
     videoModel: 'sora-2',
-    isVideo: true
+    isVideo: true,
+    isPinned: true // Always show this as a default participant
   },
 ];

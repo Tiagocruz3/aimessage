@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Bot, MessageSquarePlus, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, Bot, MessageSquarePlus, Trash2, AlertTriangle, Pin } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import ConversationItem from './ConversationItem';
@@ -17,7 +17,14 @@ function Sidebar() {
            conv.lastMessage.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
+  // Separate pinned and unpinned conversations
+  const pinnedConversations = filteredConversations.filter(conv => conv.isPinned);
+  const unpinnedConversations = filteredConversations.filter(conv => !conv.isPinned);
+
   const openRemoveConversationModal = (conversation) => {
+    // Don't allow removing pinned conversations
+    if (conversation.isPinned) return;
+    
     const model = aiModels.find(m => m.id === conversation.modelId);
     setPendingRemoval({
       id: conversation.id,
@@ -33,6 +40,12 @@ function Sidebar() {
 
   const confirmRemoveConversation = () => {
     if (!pendingRemoval) return;
+    // Double check it's not a pinned conversation
+    const conversation = conversations.find(c => c.id === pendingRemoval.id);
+    if (conversation?.isPinned) {
+      setPendingRemoval(null);
+      return;
+    }
     removeConversation(pendingRemoval.id);
     setPendingRemoval(null);
   };
@@ -75,15 +88,49 @@ function Sidebar() {
         <div className="flex-1 overflow-y-auto min-h-0">
           <AnimatePresence>
             {filteredConversations.length > 0 ? (
-              <div className="divide-y divide-border">
-                {filteredConversations.map((conversation) => (
-                  <ConversationItem
-                    key={conversation.id}
-                    conversation={conversation}
-                    isActive={activeConversationId === conversation.id}
-                    onRemove={() => openRemoveConversationModal(conversation)}
-                  />
-                ))}
+              <div>
+                {/* Pinned Conversations */}
+                {pinnedConversations.length > 0 && (
+                  <div>
+                    <div className="px-4 py-2 flex items-center gap-2 text-xs font-semibold text-text-secondary uppercase tracking-wide">
+                      <Pin className="w-3 h-3" />
+                      Default Chat
+                    </div>
+                    <div className="divide-y divide-border">
+                      {pinnedConversations.map((conversation) => (
+                        <ConversationItem
+                          key={conversation.id}
+                          conversation={conversation}
+                          isActive={activeConversationId === conversation.id}
+                          onRemove={() => openRemoveConversationModal(conversation)}
+                          isPinned={true}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Regular Conversations */}
+                {unpinnedConversations.length > 0 && (
+                  <div>
+                    {pinnedConversations.length > 0 && (
+                      <div className="px-4 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wide">
+                        Other Chats
+                      </div>
+                    )}
+                    <div className="divide-y divide-border">
+                      {unpinnedConversations.map((conversation) => (
+                        <ConversationItem
+                          key={conversation.id}
+                          conversation={conversation}
+                          isActive={activeConversationId === conversation.id}
+                          onRemove={() => openRemoveConversationModal(conversation)}
+                          isPinned={false}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <motion.div

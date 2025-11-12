@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Radio, ExternalLink, Webhook, Server, Search, Image as ImageIcon, Scan, Wifi, WifiOff, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Radio, ExternalLink, Webhook, Server, Search, Image as ImageIcon, Scan, Wifi, WifiOff, Loader2, AlertCircle, Video } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import toast from 'react-hot-toast';
@@ -10,6 +10,7 @@ const tabs = [
   { id: 'api', name: 'API Settings', icon: Radio },
   { id: 'search', name: 'Search', icon: Search },
   { id: 'image', name: 'Image Generation', icon: ImageIcon },
+  { id: 'video', name: 'Video Generation (Sora)', icon: Video },
   { id: 'ocr', name: 'OCR Model', icon: Scan },
 ];
 
@@ -327,14 +328,14 @@ function Settings({ onBack }) {
                   <div>
                     <h2 className="text-xl font-bold mb-2">Image Generation Settings</h2>
                     <p className="text-sm text-text-secondary mb-6">
-                      Configure image generation models and API keys
+                      Configure static image generation models (DALL-E, etc.) - For video generation, see the Video Generation tab
                     </p>
                   </div>
 
                   {/* OpenAI API Key for Image Generation */}
                   <div>
                     <label className="block text-sm font-medium mb-2">
-                      OpenAI API Key (Recommended for Image Generation)
+                      OpenAI API Key (For DALL-E Image Generation)
                     </label>
                     <input
                       type="password"
@@ -344,7 +345,7 @@ function Settings({ onBack }) {
                       className="w-full px-4 py-2 bg-surface-light rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
                     />
                     <p className="text-xs text-text-secondary mt-2">
-                      Recommended: Use an OpenAI API key for reliable image generation. If not set, will attempt to use OpenRouter API key.
+                      This same key is also used for Sora video generation. If not set, will attempt to use OpenRouter API key for images.
                     </p>
                     <a
                       href="https://platform.openai.com/api-keys"
@@ -426,6 +427,119 @@ function Settings({ onBack }) {
                     <p className="text-sm text-text-secondary">
                       <strong className="text-text">How it works:</strong> When a user requests an image to be generated, 
                       the selected model will be used via the OpenRouter API. Make sure you have an OpenRouter API key configured.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Video Generation Settings Tab */}
+              {activeTab === 'video' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold mb-2">Video Generation Settings (Sora)</h2>
+                    <p className="text-sm text-text-secondary mb-6">
+                      Configure OpenAI's Sora for AI-powered video generation
+                    </p>
+                  </div>
+
+                  {/* OpenAI API Key for Video Generation */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      OpenAI API Key (Required for Sora)
+                    </label>
+                    <input
+                      type="password"
+                      value={settings.openaiApiKey || ''}
+                      onChange={(e) => setSettings({ ...settings, openaiApiKey: e.target.value })}
+                      placeholder="sk-..."
+                      className="w-full px-4 py-2 bg-surface-light rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                    <p className="text-xs text-text-secondary mt-2">
+                      Sora requires an OpenAI API key with video generation access enabled.
+                    </p>
+                    <a
+                      href="https://platform.openai.com/api-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary mt-2 hover:underline"
+                    >
+                      Get your OpenAI API key <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+
+                  {/* Sora Model Info */}
+                  <div className="p-4 bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <Video className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-text mb-2">About Sora 2 Video</p>
+                        <p className="text-sm text-text-secondary">
+                          Sora is OpenAI's advanced AI video generation model that creates short, high-quality videos 
+                          from natural language prompts. Simply describe what you want to see, and Sora will generate 
+                          a video for you.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* How to Use */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-text">How to Use Sora:</h3>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-3 p-3 bg-surface rounded-lg border border-border">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                          1
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm mb-1">Configure Your API Key</div>
+                          <div className="text-xs text-text-secondary">
+                            Enter your OpenAI API key above and click "Save Settings"
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 bg-surface rounded-lg border border-border">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                          2
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm mb-1">Find Sora in the Sidebar</div>
+                          <div className="text-xs text-text-secondary">
+                            Look for "Sora 2 Video" under "Default Chat" in the sidebar - it's always there!
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 bg-surface rounded-lg border border-border">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                          3
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm mb-1">Describe Your Video</div>
+                          <div className="text-xs text-text-secondary">
+                            Type a detailed prompt like "A golden retriever running through a field at sunset"
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 bg-surface rounded-lg border border-border">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                          4
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm mb-1">Wait for Rendering</div>
+                          <div className="text-xs text-text-secondary">
+                            Sora will process your prompt and generate a short video (this may take 1-2 minutes)
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Important Note */}
+                  <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                    <p className="text-sm text-text-secondary">
+                      <strong className="text-text">⚠️ Important:</strong> Sora is currently in limited access. 
+                      You need to have Sora API access enabled on your OpenAI account. If you don't have access yet, 
+                      you'll receive an error when trying to generate videos. Check your OpenAI account dashboard for 
+                      access status.
                     </p>
                   </div>
                 </div>
